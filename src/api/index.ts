@@ -592,26 +592,34 @@ export const api = {
     const doc = db.documents.find((d: any) => d.id === documentId);
     if (!doc) throw new Error('문서를 찾을 수 없습니다.');
     if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 반려할 수 있습니다.');
+    const now = new Date().toISOString();
+    const relatedTasks = db.tasks.filter((t: any) => t.document_id === documentId);
     doc.status = 'WORKING';
     doc.approver_id = approverId;
-    doc.updated_at = new Date().toISOString();
+    doc.updated_at = now;
+    relatedTasks.forEach((task: any) => {
+      if (task.status === 'DONE') {
+        task.status = 'DOING';
+        task.updated_at = now;
+      }
+    });
     db.notifications.push({
       id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
       user_id: doc.created_by,
       type: 'DOC_REJECTED',
       message: `문서가 반려되었습니다: ${doc.title}${reason ? ` (${reason})` : ''}`,
       is_read: false,
-      created_at: new Date().toISOString(),
+      created_at: now,
     });
     saveDB();
     emitDemoEvent({
       title: '문서 반려',
       api: 'PATCH /api/v1/documents/{documentId}/reject',
       method: 'PATCH',
-      tables: ['documents', 'notifications'],
-      summary: '문서를 반려하고 잠금을 해제하여 WORKING 재작업 흐름으로 되돌립니다.',
+      tables: ['documents', 'tasks', 'notifications'],
+      summary: '문서를 반려하고 하위 DONE Task를 DOING으로 되돌려 부서원이 다시 편집할 수 있게 합니다.',
       payload: `{ reason: "${reason}" }`,
-      result: `document_id=${documentId}, status=WORKING`,
+      result: `document_id=${documentId}, status=WORKING, reopened_tasks=${relatedTasks.length}`,
     });
     return doc;
   }

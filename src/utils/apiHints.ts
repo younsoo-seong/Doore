@@ -108,9 +108,9 @@ export const apiHints = {
   rejectDocument: {
     title: '문서 반려',
     api: 'PATCH /api/v1/documents/{documentId}/reject',
-    erd: ['documents', 'notifications'],
-    event: 'DOCUMENT_REJECTED 알림 발생',
-    result: '문서 잠금이 해제되고 WORKING 재작업 흐름으로 돌아갑니다.',
+    erd: ['documents', 'tasks', 'notifications'],
+    event: 'DOCUMENT_REJECTED 알림 발생, DONE Task -> DOING 재오픈',
+    result: '문서 잠금이 해제되고 부서원 Task가 다시 편집 가능한 재작업 흐름으로 돌아갑니다.',
   },
   readNotification: {
     title: '알림 읽음 처리',
