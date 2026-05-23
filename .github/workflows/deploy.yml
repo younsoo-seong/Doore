@@ -24,7 +24,7 @@ jobs:
       # 3. 패키지를 설치하고 배포용 파일로 빌드합니다.
       - name: Install dependencies and Build
         run: |
-          npm ci
+          npm install
           npm run build
 
       # 4. 2단계에서 설정한 GitHub Secrets를 사용해 AWS 자격 증명을 인증합니다.
