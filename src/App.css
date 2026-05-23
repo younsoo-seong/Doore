@@ -429,31 +429,19 @@
 }
 
 .api-hint-card {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
+  position: fixed;
   z-index: 2500;
-  width: 320px;
   padding: 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: #ffffff;
   color: var(--text-primary);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.18);
-  display: none;
+  display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-}
-
-.api-hint-card.left {
-  left: 0;
-  right: auto;
-}
-
-.api-hint-wrap:hover .api-hint-card,
-.api-hint-wrap:focus-within .api-hint-card {
-  display: flex;
+  overflow-y: auto;
 }
 
 .api-hint-title {
