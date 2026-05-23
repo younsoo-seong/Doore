@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +32,17 @@ export default function EditTask() {
 
   // Simulated live peer typing
   const [simulatedTyping, setSimulatedTyping] = useState('');
+
+  const peerCursorMember = useMemo(() => {
+    if (!currentUser) return null;
+
+    return (
+      deptMembers.find((member: any) => selectedAssignees.includes(member.id) && member.id !== currentUser.id) ||
+      deptMembers.find((member: any) => member.id !== currentUser.id && (member.role === 'LEADER' || member.role === 'TASK_MANAGER')) ||
+      deptMembers.find((member: any) => member.id !== currentUser.id) ||
+      null
+    );
+  }, [currentUser, deptMembers, selectedAssignees]);
 
   useEffect(() => {
     async function loadTaskDetails() {
@@ -70,15 +81,16 @@ export default function EditTask() {
   // Simulated peer typing effect
   useEffect(() => {
     if (!documentInfo) return;
+    if (!peerCursorMember) return;
     if (documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED') return;
 
     const interval = setInterval(() => {
       setSimulatedTyping(prev => 
-        prev.length > 30 ? '' : prev + ' 동료 기여분 입력 중...'
+        prev.length > 30 ? '' : prev + ` ${peerCursorMember.name}님이 입력 중...`
       );
     }, 4000);
     return () => clearInterval(interval);
-  }, [documentInfo]);
+  }, [documentInfo, peerCursorMember]);
 
   // Handle content auto-saving
   const handleContentSave = async (title: string, content: string) => {
@@ -292,9 +304,9 @@ export default function EditTask() {
               </div>
             )}
             {/* Simulated collaborative peer cursor */}
-            {!isReadOnly && (
+            {!isReadOnly && peerCursorMember && (
               <div className="mock-cursor" style={{ top: '160px', left: '260px' }}>
-                <div className="cursor-name">정동재</div>
+                <div className="cursor-name">{peerCursorMember.name}</div>
                 <div className="cursor-pointer"></div>
               </div>
             )}
@@ -339,7 +351,7 @@ export default function EditTask() {
             />
 
             {/* Peer input simulation */}
-            {!isReadOnly && simulatedTyping && (
+            {!isReadOnly && peerCursorMember && simulatedTyping && (
               <div style={{ marginTop: '16px', fontSize: '13px', color: '#ec4899', fontStyle: 'italic' }}>
                 {simulatedTyping} <span className="typing-indicator">|</span>
               </div>
