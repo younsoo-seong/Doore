@@ -7,6 +7,20 @@ export interface ApiHintContent {
 }
 
 export const apiHints = {
+  login: {
+    title: '로그인',
+    api: 'POST /api/v1/auth/login',
+    erd: ['users', 'company_members', 'department_members'],
+    event: 'JWT 발급 및 역할/워크스페이스 로드',
+    result: '조직장/부서장/부서원 권한에 맞는 화면으로 진입합니다.',
+  },
+  signup: {
+    title: '회원가입',
+    api: 'POST /api/v1/auth/signup',
+    erd: ['users'],
+    event: '신규 사용자 생성',
+    result: '사용자 계정 생성 후 로그인 토큰을 발급합니다.',
+  },
   createCompany: {
     title: '조직 생성',
     api: 'POST /api/v1/companies',
@@ -39,14 +53,14 @@ export const apiHints = {
     title: '부서 배치 및 권한 부여',
     api: 'POST /api/v1/departments/{deptId}/members',
     erd: ['department_members', 'notifications'],
-    event: 'LEADER / TASK_MANAGER / MEMBER 배치',
+    event: 'LEADER / MEMBER 배치',
     result: '부서 역할에 따라 문서/Task 권한이 달라집니다.',
   },
   updateDepartmentRole: {
     title: '부서 권한 변경',
     api: 'PATCH /api/v1/departments/{deptId}/members/{userId}',
     erd: ['department_members'],
-    event: '부서장 또는 Task 관리자 지정',
+    event: '부서장 또는 부서원 지정',
     result: 'Task 분할과 담당자 지정 권한이 즉시 반영됩니다.',
   },
   createDocument: {
@@ -96,7 +110,7 @@ export const apiHints = {
     api: 'PATCH /api/v1/documents/{documentId}/reject',
     erd: ['documents', 'notifications'],
     event: 'DOCUMENT_REJECTED 알림 발생',
-    result: '문서가 REJECTED가 되어 재작업 흐름으로 돌아갑니다.',
+    result: '문서 잠금이 해제되고 WORKING 재작업 흐름으로 돌아갑니다.',
   },
   readNotification: {
     title: '알림 읽음 처리',

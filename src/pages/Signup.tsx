@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 import '../styles/Auth.css';
 
 export default function Signup() {
@@ -54,7 +56,7 @@ export default function Signup() {
               type="text" 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
-              placeholder="홍길동"
+              placeholder="정동재"
               required 
             />
           </div>
@@ -90,9 +92,11 @@ export default function Signup() {
               minLength={4}
             />
           </div>
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? '가입 중...' : '회원가입'}
-          </button>
+          <ApiHint hint={apiHints.signup} align="left" fullWidth>
+            <button type="submit" className="auth-btn" disabled={loading}>
+              {loading ? '가입 중...' : '회원가입'}
+            </button>
+          </ApiHint>
         </form>
 
         <div className="auth-links">

@@ -16,6 +16,7 @@ export default function Documents() {
   const [docsData, setDocsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentDeptRole, setCurrentDeptRole] = useState<string | null>(null);
+  const [currentCompanyRole, setCurrentCompanyRole] = useState<string | null>(null);
 
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
@@ -90,10 +91,30 @@ export default function Documents() {
     loadMyDepartmentRole();
   }, [activeDept, currentUser]);
 
+  useEffect(() => {
+    async function loadMyCompanyRole() {
+      if (!currentCompany || !currentUser) {
+        setCurrentCompanyRole(null);
+        return;
+      }
+      const members = await api.getCompanyMembers(currentCompany.id);
+      const me = members.find((member: any) => member.id === currentUser.id);
+      setCurrentCompanyRole(me?.role ?? null);
+    }
+
+    loadMyCompanyRole();
+  }, [currentCompany, currentUser]);
+
   const canManageActiveDept = canManageTasks(currentDeptRole);
+  const canCreateDepartment = currentCompanyRole === 'OWNER';
+  const canManageDepartment = canCreateDepartment || canManageActiveDept;
 
   const openSettings = async () => {
     if (!activeDept || !currentCompany) return;
+    if (!canManageDepartment) {
+      alert('부서 배치와 권한 관리는 조직장 또는 부서장 권한이 필요합니다.');
+      return;
+    }
     setDeptName(activeDept.name);
     
     // 1. Fetch current department members
@@ -115,7 +136,7 @@ export default function Documents() {
   const openCreateDocModal = async () => {
     if (!activeDept) return;
     if (!canManageActiveDept) {
-      alert('문서 생성과 Task 분할은 부서장 또는 Task 관리자만 가능합니다.');
+      alert('문서 생성과 Task 분할은 부서장만 가능합니다.');
       return;
     }
     try {
@@ -210,7 +231,7 @@ export default function Documents() {
   const openAddTaskModal = async (docId: number) => {
     if (!activeDept) return;
     if (!canManageActiveDept) {
-      alert('Task 발급은 부서장 또는 Task 관리자만 가능합니다.');
+      alert('Task 발급은 부서장만 가능합니다.');
       return;
     }
     try {
@@ -383,7 +404,12 @@ export default function Documents() {
         </div>
         <div style={{ padding: '16px', borderTop: '1px solid var(--border-color)' }}>
           <ApiHint hint={apiHints.createDepartment} align="left" fullWidth>
-            <button onClick={() => navigate('/create-department')} style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', border: '1px dashed var(--primary)', color: 'var(--primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+            <button
+              onClick={() => canCreateDepartment ? navigate('/create-department') : alert('하위 부서 생성은 조직장 권한이 필요합니다.')}
+              disabled={!canCreateDepartment}
+              title={canCreateDepartment ? '조직 내 하위 부서를 생성합니다.' : '조직장 권한이 필요합니다.'}
+              style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', border: '1px dashed var(--primary)', color: 'var(--primary)', borderRadius: '8px', cursor: canCreateDepartment ? 'pointer' : 'not-allowed', fontWeight: '600', opacity: canCreateDepartment ? 1 : 0.45 }}
+            >
               + 새 부서 생성
             </button>
           </ApiHint>
@@ -399,13 +425,15 @@ export default function Documents() {
               <div style={{ display: 'flex', gap: '12px' }}>
                 <button 
                   onClick={openSettings} 
+                  disabled={!canManageDepartment}
                   style={{ 
                     padding: '10px 16px', 
                     borderRadius: '8px', 
                     border: '1px solid var(--border-color)', 
                     backgroundColor: 'var(--bg-card)', 
                     color: 'var(--text-primary)', 
-                    cursor: 'pointer', 
+                    cursor: canManageDepartment ? 'pointer' : 'not-allowed',
+                    opacity: canManageDepartment ? 1 : 0.45,
                     fontWeight: '600', 
                     display: 'flex', 
                     alignItems: 'center', 
@@ -420,7 +448,7 @@ export default function Documents() {
                     onClick={openCreateDocModal}
                     className="btn-primary"
                     disabled={!canManageActiveDept}
-                    title={canManageActiveDept ? '문서를 만들고 Task를 분할합니다.' : '부서장 또는 Task 관리자 권한이 필요합니다.'}
+                    title={canManageActiveDept ? '문서를 만들고 Task를 분할합니다.' : '부서장 권한이 필요합니다.'}
                   >
                     + 새 문서 생성
                   </button>
@@ -752,7 +780,6 @@ export default function Documents() {
                           style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px' }}
                         >
                           <option value="MEMBER">부서원</option>
-                          <option value="TASK_MANAGER">Task 관리자</option>
                           <option value="LEADER">부서장</option>
                         </select>
                       </ApiHint>
@@ -813,7 +840,6 @@ export default function Documents() {
                       }}
                     >
                       <option value="MEMBER">부서원</option>
-                      <option value="TASK_MANAGER">Task 관리자</option>
                       <option value="LEADER">부서장</option>
                     </select>
                   )}
@@ -1073,7 +1099,7 @@ export default function Documents() {
                       .filter(m => !addTaskAssignees.includes(m.id))
                       .map(m => (
                         <option key={m.id} value={m.id}>
-                          {m.name} ({m.role === 'LEADER' ? '부서장' : m.role === 'TASK_MANAGER' ? 'Task 관리자' : '부서원'})
+                          {m.name} ({m.role === 'LEADER' || m.role === 'TASK_MANAGER' ? '부서장' : '부서원'})
                         </option>
                       ))}
                   </select>

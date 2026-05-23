@@ -266,11 +266,11 @@ export const api = {
     db.department_members.push({ department_id: departmentId, user_id: userId, role });
     saveDB();
     emitDemoEvent({
-      title: role === 'TASK_MANAGER' ? 'Task 관리자 배치' : '부서원 배치',
+      title: role === 'LEADER' || role === 'TASK_MANAGER' ? '부서장 배치' : '부서원 배치',
       api: 'POST /api/v1/departments/{deptId}/members',
       method: 'POST',
       tables: ['department_members', 'notifications'],
-      summary: '부서에 사용자를 배치하고 부서장/Task 관리자/부서원 역할을 부여합니다.',
+      summary: '부서에 사용자를 배치하고 부서장/부서원 역할을 부여합니다.',
       payload: `{ user_id: ${userId}, role: "${role}" }`,
       result: `department_id=${departmentId}`,
     });
@@ -288,7 +288,7 @@ export const api = {
         api: 'PATCH /api/v1/departments/{deptId}/members/{userId}',
         method: 'PATCH',
         tables: ['department_members'],
-        summary: '계정을 부서장, Task 관리자 또는 부서원으로 변경합니다.',
+        summary: '계정을 부서장 또는 부서원으로 변경합니다.',
         payload: `{ role: "${role}" }`,
         result: `user_id=${userId}`,
       });
@@ -592,7 +592,7 @@ export const api = {
     const doc = db.documents.find((d: any) => d.id === documentId);
     if (!doc) throw new Error('문서를 찾을 수 없습니다.');
     if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 반려할 수 있습니다.');
-    doc.status = 'REJECTED';
+    doc.status = 'WORKING';
     doc.approver_id = approverId;
     doc.updated_at = new Date().toISOString();
     db.notifications.push({
@@ -609,9 +609,9 @@ export const api = {
       api: 'PATCH /api/v1/documents/{documentId}/reject',
       method: 'PATCH',
       tables: ['documents', 'notifications'],
-      summary: '문서를 반려하고 재작업 흐름으로 되돌립니다.',
+      summary: '문서를 반려하고 잠금을 해제하여 WORKING 재작업 흐름으로 되돌립니다.',
       payload: `{ reason: "${reason}" }`,
-      result: `document_id=${documentId}, status=REJECTED`,
+      result: `document_id=${documentId}, status=WORKING`,
     });
     return doc;
   }

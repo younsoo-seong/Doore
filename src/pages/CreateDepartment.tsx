@@ -146,7 +146,6 @@ export default function CreateDepartment() {
                     }}
                   >
                     <option value="MEMBER">부서원</option>
-                    <option value="TASK_MANAGER">Task 관리자</option>
                     <option value="LEADER">부서장</option>
                   </select>
                 )}

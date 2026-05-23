@@ -10,9 +10,9 @@ import { apiHints } from '../utils/apiHints';
 import '../styles/Notification.css';
 
 const demoAccounts = [
-  { label: '조직장', email: 'admin@doore.com', name: '김두레', role: '승인/반려, 조직 관리' },
-  { label: 'Task 관리자', email: 'gildong@doore.com', name: '홍길동', role: '문서 생성, Task 분할' },
-  { label: '부서원', email: 'sylee@doore.com', name: '이서연', role: '내 Task 편집' },
+  { label: '조직장', email: 'admin@doore.com', name: '박재홍', role: '승인/반려, 조직 관리' },
+  { label: '부서장', email: 'leader@doore.com', name: '오승민', role: '부서 배치, 문서 생성, Task 분할' },
+  { label: '부서원', email: 'member@doore.com', name: '정동재', role: '내 Task 편집' },
 ];
 
 export default function MainLayout() {
@@ -104,6 +104,7 @@ export default function MainLayout() {
   const filteredNotifications = notifications.filter(n => 
     activeTab === 'unread' ? !n.is_read : n.is_read
   );
+  const isOwner = roleSummary.companyRole === 'OWNER';
 
   const handleLogout = () => {
     logout();
@@ -190,19 +191,27 @@ export default function MainLayout() {
                   {comp.name}
                 </div>
               ))}
-              <div style={{borderTop: '1px solid var(--border-color)'}}></div>
-              <div 
-                onClick={(e) => { e.stopPropagation(); navigate('/settings'); setShowWorkspaceDropdown(false); }}
-                style={{padding: '12px 16px', color: 'var(--text-primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
-              >
-                ⚙️ 회사 설정 및 관리
-              </div>
-              <div 
-                onClick={(e) => { e.stopPropagation(); navigate('/create-company'); setShowWorkspaceDropdown(false); }}
-                style={{padding: '10px 16px 16px', color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
-              >
-                + 새 회사 만들기
-              </div>
+              {isOwner ? (
+                <>
+                  <div style={{borderTop: '1px solid var(--border-color)'}}></div>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); navigate('/settings'); setShowWorkspaceDropdown(false); }}
+                    style={{padding: '12px 16px', color: 'var(--text-primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
+                  >
+                    ⚙️ 회사 설정 및 관리
+                  </div>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); navigate('/create-company'); setShowWorkspaceDropdown(false); }}
+                    style={{padding: '10px 16px 16px', color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
+                  >
+                    + 새 회사 만들기
+                  </div>
+                </>
+              ) : (
+                <div style={{borderTop: '1px solid var(--border-color)', padding: '12px 16px', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700}}>
+                  조직 생성/관리는 조직장 권한이 필요합니다.
+                </div>
+              )}
             </div>
           )}
         </div>

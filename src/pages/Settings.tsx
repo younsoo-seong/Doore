@@ -242,12 +242,11 @@ export default function Settings() {
                                         border: '1px solid var(--border-color)',
                                         fontSize: '11px',
                                         fontWeight: 700,
-                                        background: dept.role === 'TASK_MANAGER' ? '#ecfeff' : dept.role === 'LEADER' ? '#eff6ff' : '#f8fafc',
-                                        color: dept.role === 'TASK_MANAGER' ? '#0e7490' : dept.role === 'LEADER' ? '#1d4ed8' : '#475569'
+                                      background: dept.role === 'LEADER' || dept.role === 'TASK_MANAGER' ? '#eff6ff' : '#f8fafc',
+                                      color: dept.role === 'LEADER' || dept.role === 'TASK_MANAGER' ? '#1d4ed8' : '#475569'
                                       }}
                                     >
                                       <option value="MEMBER">부서원</option>
-                                      <option value="TASK_MANAGER">Task 관리자</option>
                                       <option value="LEADER">부서장</option>
                                     </select>
                                   </ApiHint>

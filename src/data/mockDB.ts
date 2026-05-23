@@ -106,9 +106,9 @@ export interface Notification {
 // ----------------------------------------------------
 
 export const users: User[] = [
-  { id: 1, email: 'admin@doore.com', name: '김두레', created_at: '2026-01-10T09:00:00Z' },
-  { id: 2, email: 'gildong@doore.com', name: '홍길동', created_at: '2026-02-15T10:30:00Z' },
-  { id: 3, email: 'sylee@doore.com', name: '이서연', created_at: '2026-03-20T14:15:00Z' },
+  { id: 1, email: 'admin@doore.com', name: '박재홍', created_at: '2026-01-10T09:00:00Z' },
+  { id: 2, email: 'leader@doore.com', name: '오승민', created_at: '2026-02-15T10:30:00Z' },
+  { id: 3, email: 'member@doore.com', name: '정동재', created_at: '2026-03-20T14:15:00Z' },
   { id: 4, email: 'jhpark@doore.com', name: '박지훈', created_at: '2026-04-05T08:45:00Z' },
   { id: 5, email: 'yjchoi@doore.com', name: '최유진', created_at: '2026-05-01T11:20:00Z' }
 ];
@@ -131,9 +131,9 @@ export const departments: Department[] = [
 ];
 
 export const department_members: DepartmentMember[] = [
-  { department_id: 101, user_id: 1, role: 'MEMBER' }, // 김두레
-  { department_id: 101, user_id: 2, role: 'TASK_MANAGER' }, // 홍길동
-  { department_id: 101, user_id: 3, role: 'MEMBER' }, // 이서연
+  { department_id: 101, user_id: 1, role: 'MEMBER' }, // 박재홍 (실시간 조회)
+  { department_id: 101, user_id: 2, role: 'LEADER' }, // 오승민
+  { department_id: 101, user_id: 3, role: 'MEMBER' }, // 정동재
   { department_id: 102, user_id: 4, role: 'LEADER' }, // 박지훈
   { department_id: 102, user_id: 5, role: 'MEMBER' }  // 최유진
 ];
@@ -211,9 +211,9 @@ export const tasks: Task[] = [
 ];
 
 export const task_assignees: TaskAssignee[] = [
-  { task_id: 5001, user_id: 2 }, // 홍길동
-  { task_id: 5001, user_id: 3 }, // 이서연
-  { task_id: 5002, user_id: 2 }, // 홍길동
+  { task_id: 5001, user_id: 2 }, // 오승민
+  { task_id: 5001, user_id: 3 }, // 정동재
+  { task_id: 5002, user_id: 3 }, // 정동재
   { task_id: 5003, user_id: 4 }, // 박지훈
   { task_id: 5003, user_id: 5 }  // 최유진
 ];
@@ -286,14 +286,44 @@ function normalizeDB(database: any) {
   const owner = database.company_members?.find((cm: CompanyMember) => cm.company_id === 1 && cm.user_id === 1);
   if (owner) owner.role = 'OWNER';
 
+  const executive = database.users?.find((user: User) => user.id === 1);
+  if (executive) {
+    executive.email = 'admin@doore.com';
+    executive.name = '박재홍';
+  }
+
+  const leader = database.users?.find((user: User) => user.id === 2);
+  if (leader) {
+    leader.email = 'leader@doore.com';
+    leader.name = '오승민';
+  }
+
+  const member = database.users?.find((user: User) => user.id === 3);
+  if (member) {
+    member.email = 'member@doore.com';
+    member.name = '정동재';
+  }
+
   const plannerAdmin = database.company_members?.find((cm: CompanyMember) => cm.company_id === 1 && cm.user_id === 4);
   if (plannerAdmin && plannerAdmin.role === 'MEMBER') plannerAdmin.role = 'ADMIN';
 
   const ownerDeptMember = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 1);
   if (ownerDeptMember) ownerDeptMember.role = 'MEMBER';
 
-  const taskManager = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 2);
-  if (taskManager) taskManager.role = 'TASK_MANAGER';
+  const departmentLeader = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 2);
+  if (departmentLeader) departmentLeader.role = 'LEADER';
+
+  const departmentWorker = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 3);
+  if (departmentWorker) departmentWorker.role = 'MEMBER';
+
+  const apiTask = database.tasks?.find((task: Task) => task.id === 5002);
+  if (apiTask) {
+    apiTask.created_by = 2;
+    apiTask.assignee_count = 1;
+  }
+
+  const task5002Assignee = database.task_assignees?.find((assignee: TaskAssignee) => assignee.task_id === 5002);
+  if (task5002Assignee) task5002Assignee.user_id = 3;
 
   database.department_members?.forEach((dm: DepartmentMember) => {
     if (!['LEADER', 'TASK_MANAGER', 'MEMBER'].includes(dm.role)) dm.role = 'MEMBER';
@@ -309,6 +339,19 @@ function normalizeDB(database: any) {
 const stored = localStorage.getItem('doore_mock_db');
 export const db = normalizeDB(stored ? JSON.parse(stored) : defaultDB);
 localStorage.setItem('doore_mock_db', JSON.stringify(db));
+
+const storedUser = localStorage.getItem('doore_user');
+if (storedUser) {
+  try {
+    const currentUser = JSON.parse(storedUser);
+    const normalizedUser = db.users.find((user: User) => user.id === currentUser.id);
+    if (normalizedUser) {
+      localStorage.setItem('doore_user', JSON.stringify(normalizedUser));
+    }
+  } catch {
+    localStorage.removeItem('doore_user');
+  }
+}
 
 export const saveDB = () => {
   localStorage.setItem('doore_mock_db', JSON.stringify(db));

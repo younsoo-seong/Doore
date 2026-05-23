@@ -9,7 +9,7 @@ export const companyRoleLabels: Record<CompanyRole, string> = {
 
 export const departmentRoleLabels: Record<DepartmentRole, string> = {
   LEADER: '부서장',
-  TASK_MANAGER: 'Task 관리자',
+  TASK_MANAGER: '부서장',
   MEMBER: '부서원',
 };
 

@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 import '../styles/Auth.css';
 
 const demoAccounts = [
   { label: '조직장', email: 'admin@doore.com', description: '승인/반려, 조직 관리' },
-  { label: 'Task 관리자', email: 'gildong@doore.com', description: '문서 생성, Task 분할' },
-  { label: '부서원', email: 'sylee@doore.com', description: '내 Task 편집' },
+  { label: '부서장', email: 'leader@doore.com', description: '부서 배치, Task 분할' },
+  { label: '부서원', email: 'member@doore.com', description: '내 Task 편집' },
 ];
 
 export default function Login() {
@@ -100,9 +102,11 @@ export default function Login() {
               required 
             />
           </div>
-          <button type="submit" className="auth-btn" disabled={loading}>
-            {loading ? '로그인 중...' : '로그인'}
-          </button>
+          <ApiHint hint={apiHints.login} align="left" fullWidth>
+            <button type="submit" className="auth-btn" disabled={loading}>
+              {loading ? '로그인 중...' : '로그인'}
+            </button>
+          </ApiHint>
         </form>
 
         <div className="auth-links">

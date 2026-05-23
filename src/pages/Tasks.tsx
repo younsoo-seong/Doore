@@ -114,7 +114,7 @@ export default function Tasks() {
         <div>
           <h2 style={{ fontSize: '18px', marginBottom: '4px' }}>Task 칸반 보드</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            부서원은 자신의 Task를, Task 관리자는 부서 전체 업무 흐름을 확인합니다.
+            부서원은 자신의 Task를, 부서장은 부서 전체 업무 흐름을 확인합니다.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

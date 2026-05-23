@@ -142,7 +142,7 @@ export default function EditTask() {
       ? '결재 잠금 상태의 문서입니다.'
       : taskStatus === 'DONE'
         ? '완료된 Task는 잠금 상태입니다.'
-        : '담당자 또는 Task 관리자만 편집할 수 있습니다.';
+        : '담당자 또는 부서장만 편집할 수 있습니다.';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px', padding: '20px', position: 'relative' }}>
@@ -259,7 +259,7 @@ export default function EditTask() {
                       key={uid} 
                       className="avatar" 
                       style={{ width: 22, height: 22, fontSize: 9 }}
-                      title={member ? `${member.name} (${member.role === 'LEADER' ? '부서장' : member.role === 'TASK_MANAGER' ? 'Task 관리자' : '부서원'})` : ''}
+                      title={member ? `${member.name} (${member.role === 'LEADER' || member.role === 'TASK_MANAGER' ? '부서장' : '부서원'})` : ''}
                     >
                       {member ? member.name.charAt(0) : ''}
                     </div>
@@ -294,7 +294,7 @@ export default function EditTask() {
             {/* Simulated collaborative peer cursor */}
             {!isReadOnly && (
               <div className="mock-cursor" style={{ top: '160px', left: '260px' }}>
-                <div className="cursor-name">이서연</div>
+                <div className="cursor-name">정동재</div>
                 <div className="cursor-pointer"></div>
               </div>
             )}
