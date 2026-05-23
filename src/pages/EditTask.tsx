@@ -148,13 +148,18 @@ export default function EditTask() {
     isOffline,
   });
   const isReadOnly = !isEditable;
-  const lockReason = isOffline
-    ? '네트워크 연결이 끊겨 편집이 일시 중단되었습니다.'
-    : documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED'
+  const lockReason = documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED'
       ? '결재 잠금 상태의 문서입니다.'
       : taskStatus === 'DONE'
         ? '완료된 Task는 잠금 상태입니다.'
         : '담당자 또는 부서장만 편집할 수 있습니다.';
+  const saveLabel = saveStatus === 'saved'
+    ? isOffline ? '로컬 IndexedDB 저장 완료' : '동기화 완료'
+    : saveStatus === 'saving'
+      ? isOffline ? 'IndexedDB 저장 중...' : '저장 중...'
+      : '오류';
+  const saveColor = saveStatus === 'error' ? '#ef4444' : isOffline ? '#b45309' : '#10b981';
+  const saveBackground = saveStatus === 'error' ? '#fee2e2' : isOffline ? '#fef3c7' : '#dcfce7';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px', padding: '20px', position: 'relative' }}>
@@ -282,13 +287,13 @@ export default function EditTask() {
 
             <span style={{ 
               fontSize: '12px', 
-              color: saveStatus === 'saved' ? '#10b981' : '#ef4444', 
+              color: saveColor, 
               fontWeight: '600', 
               padding: '4px 8px', 
-              background: saveStatus === 'saved' ? '#dcfce7' : '#fee2e2', 
+              background: saveBackground, 
               borderRadius: '4px' 
             }}>
-              {saveStatus === 'saved' ? '동기화 완료' : saveStatus === 'saving' ? '저장 중...' : '오류'}
+              {saveLabel}
             </span>
           </div>
         </div>

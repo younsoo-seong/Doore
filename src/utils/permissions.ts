@@ -29,8 +29,7 @@ export function canEditTask(params: {
   departmentRole?: string | null;
   isOffline?: boolean;
 }) {
-  const { documentStatus, taskStatus, currentUserId, assigneeIds, departmentRole, isOffline } = params;
-  if (isOffline) return false;
+  const { documentStatus, taskStatus, currentUserId, assigneeIds, departmentRole } = params;
   if (documentStatus === 'PENDING' || documentStatus === 'APPROVED') return false;
   if (taskStatus === 'DONE') return false;
   if (canManageTasks(departmentRole)) return true;

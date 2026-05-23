@@ -88,8 +88,8 @@ export const apiHints = {
     title: 'Task 실시간 편집',
     api: 'PUB /pub/tasks/{taskId}/edit',
     erd: ['tasks'],
-    event: 'WebSocket patch 전송, OT 검증, CRDT 병합',
-    result: '변경 내용이 Task content에 반영됩니다.',
+    event: 'WebSocket patch 전송, 오프라인 시 IndexedDB patch queue 적재',
+    result: '온라인은 서버 병합, 오프라인은 로컬 IndexedDB 임시 저장 후 재연결 때 동기화됩니다.',
   },
   requestApproval: {
     title: '문서 통합 및 승인 요청',
