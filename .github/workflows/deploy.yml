@@ -38,6 +38,5 @@ jobs:
       # 5. 빌드된 정적 파일들을 S3 버킷으로 업로드합니다.
       - name: Deploy to S3
         run: |
-          aws s3 sync ./dist s3://your-s3-bucket-name --delete
-          # ./dist 부분: 빌드 결과물 폴더명 (Vite는 dist, CRA는 build 등)
-          # your-s3-bucket-name 부분: 실제 본인의 AWS S3 버킷 이름으로 변경 필수!
+          aws s3 sync ./dist s3://doore-s3-demo --delete
+
