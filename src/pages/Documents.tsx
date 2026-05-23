@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import MemberSelector from '../components/MemberSelector';
+import { canManageTasks } from '../utils/permissions';
 
 export default function Documents() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export default function Documents() {
   const [activeDept, setActiveDept] = useState<any>(null);
   const [docsData, setDocsData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [currentDeptRole, setCurrentDeptRole] = useState<string | null>(null);
 
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
@@ -21,7 +23,7 @@ export default function Documents() {
   // Department member invite selection state
   const [companyMembers, setCompanyMembers] = useState<any[]>([]);
   const [selectedInviteIds, setSelectedInviteIds] = useState<number[]>([]);
-  const [inviteRoles, setInviteRoles] = useState<Record<number, 'LEADER' | 'MEMBER'>>({});
+  const [inviteRoles, setInviteRoles] = useState<Record<number, 'LEADER' | 'TASK_MANAGER' | 'MEMBER'>>({});
   const [isInviting, setIsInviting] = useState(false);
 
   // Integrated Document View Modal State
@@ -71,6 +73,23 @@ export default function Documents() {
     loadDocs();
   }, [activeDept]);
 
+  useEffect(() => {
+    async function loadMyDepartmentRole() {
+      if (!activeDept || !currentUser) {
+        setCurrentDeptRole(null);
+        return;
+      }
+
+      const members = await api.getDepartmentMembers(activeDept.id);
+      const me = members.find((member: any) => member.id === currentUser.id);
+      setCurrentDeptRole(me?.role ?? null);
+    }
+
+    loadMyDepartmentRole();
+  }, [activeDept, currentUser]);
+
+  const canManageActiveDept = canManageTasks(currentDeptRole);
+
   const openSettings = async () => {
     if (!activeDept || !currentCompany) return;
     setDeptName(activeDept.name);
@@ -93,6 +112,10 @@ export default function Documents() {
   // Open the New Document & Tasks Creation Modal
   const openCreateDocModal = async () => {
     if (!activeDept) return;
+    if (!canManageActiveDept) {
+      alert('문서 생성과 Task 분할은 부서장 또는 Task 관리자만 가능합니다.');
+      return;
+    }
     try {
       const members = await api.getDepartmentMembers(activeDept.id);
       setDeptMembersForSelect(members);
@@ -184,6 +207,10 @@ export default function Documents() {
 
   const openAddTaskModal = async (docId: number) => {
     if (!activeDept) return;
+    if (!canManageActiveDept) {
+      alert('Task 발급은 부서장 또는 Task 관리자만 가능합니다.');
+      return;
+    }
     try {
       const members = await api.getDepartmentMembers(activeDept.id);
       setDeptMembersForSelect(members);
@@ -296,7 +323,7 @@ export default function Documents() {
     }
   };
 
-  const handleUpdateDeptMemberRole = async (userId: number, newRole: 'LEADER' | 'MEMBER') => {
+  const handleUpdateDeptMemberRole = async (userId: number, newRole: 'LEADER' | 'TASK_MANAGER' | 'MEMBER') => {
     if (!activeDept) return;
     try {
       await api.updateDepartmentMemberRole(activeDept.id, userId, newRole);
@@ -384,7 +411,14 @@ export default function Documents() {
                 >
                   ⚙️ 부서 관리
                 </button>
-                <button onClick={openCreateDocModal} className="btn-primary">+ 새 문서 생성</button>
+                <button
+                  onClick={openCreateDocModal}
+                  className="btn-primary"
+                  disabled={!canManageActiveDept}
+                  title={canManageActiveDept ? '문서를 만들고 Task를 분할합니다.' : '부서장 또는 Task 관리자 권한이 필요합니다.'}
+                >
+                  + 새 문서 생성
+                </button>
               </div>
             </div>
 
@@ -420,7 +454,8 @@ export default function Documents() {
                         <td style={{ textAlign: 'right' }}>
                           <button 
                             onClick={(e) => { e.stopPropagation(); openAddTaskModal(doc.id); }}
-                            style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer' }}
+                            disabled={!canManageActiveDept || doc.status !== 'WORKING'}
+                            style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: canManageActiveDept && doc.status === 'WORKING' ? 'pointer' : 'not-allowed', opacity: canManageActiveDept && doc.status === 'WORKING' ? 1 : 0.45 }}
                           >
                             + Task 생성
                           </button>
@@ -490,7 +525,7 @@ export default function Documents() {
                   <div style={{ flex: '1 1 300px' }}>
                     💡 본 문서는 소속 부서원들의 실시간 Task 기여분을 통합 및 병합한 최종 보고서입니다.
                   </div>
-                  {viewingDoc.status === 'WORKING' && (
+                  {viewingDoc.status === 'WORKING' && canManageActiveDept && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -594,7 +629,7 @@ export default function Documents() {
               </button>
               
               {/* Approval request request button */}
-              {viewingDoc.status === 'WORKING' && (
+              {viewingDoc.status === 'WORKING' && canManageActiveDept && (
                 <button 
                   onClick={handleRequestDocApproval}
                   style={{ 
@@ -616,7 +651,7 @@ export default function Documents() {
               )}
 
               {/* Creator Exclusive Word Editor Route */}
-              {viewingDoc.status === 'WORKING' && currentUser?.id === viewingDoc.created_by && (
+              {viewingDoc.status === 'WORKING' && canManageActiveDept && currentUser?.id === viewingDoc.created_by && (
                 <button 
                   onClick={() => {
                     setViewingDoc(null);
@@ -700,10 +735,11 @@ export default function Documents() {
                       {/* Role selection dropdown inside Settings Modal */}
                       <select
                         value={member.role}
-                        onChange={(e) => handleUpdateDeptMemberRole(member.id, e.target.value as 'LEADER' | 'MEMBER')}
+                        onChange={(e) => handleUpdateDeptMemberRole(member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
                         style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px' }}
                       >
                         <option value="MEMBER">부서원</option>
+                        <option value="TASK_MANAGER">Task 관리자</option>
                         <option value="LEADER">부서장</option>
                       </select>
 
@@ -751,7 +787,7 @@ export default function Documents() {
                   renderExtraActions={(userId) => (
                     <select
                       value={inviteRoles[userId] || 'MEMBER'}
-                      onChange={(e) => setInviteRoles(prev => ({ ...prev, [userId]: e.target.value as 'LEADER' | 'MEMBER' }))}
+                      onChange={(e) => setInviteRoles(prev => ({ ...prev, [userId]: e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER' }))}
                       style={{
                         padding: '5px 8px',
                         borderRadius: '6px',
@@ -763,6 +799,7 @@ export default function Documents() {
                       }}
                     >
                       <option value="MEMBER">부서원</option>
+                      <option value="TASK_MANAGER">Task 관리자</option>
                       <option value="LEADER">부서장</option>
                     </select>
                   )}
@@ -1018,7 +1055,7 @@ export default function Documents() {
                       .filter(m => !addTaskAssignees.includes(m.id))
                       .map(m => (
                         <option key={m.id} value={m.id}>
-                          {m.name} ({m.role === 'LEADER' ? '부서장' : '부서원'})
+                          {m.name} ({m.role === 'LEADER' ? '부서장' : m.role === 'TASK_MANAGER' ? 'Task 관리자' : '부서원'})
                         </option>
                       ))}
                   </select>

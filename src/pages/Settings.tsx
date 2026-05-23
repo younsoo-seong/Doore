@@ -83,11 +83,20 @@ export default function Settings() {
     }
   };
 
-  const handleRoleChange = async (userId: number, newRole: 'ADMIN' | 'MEMBER') => {
+  const handleRoleChange = async (userId: number, newRole: 'OWNER' | 'ADMIN' | 'MEMBER') => {
     if (!currentCompany) return;
     try {
       await api.updateMemberRole(currentCompany.id, userId, newRole);
       fetchMembersAndCandidates();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDepartmentRoleChange = async (departmentId: number, userId: number, role: 'LEADER' | 'TASK_MANAGER' | 'MEMBER') => {
+    try {
+      await api.updateDepartmentMemberRole(departmentId, userId, role);
+      await fetchMembersAndCandidates();
     } catch (e) {
       console.error(e);
     }
@@ -218,17 +227,26 @@ export default function Settings() {
                             {member.departments.map((dept: any, idx: number) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: idx < member.departments.length - 1 ? '6px' : '0' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{dept.name}</span>
-                                {dept.role && (
-                                  <span style={{ 
-                                    fontSize: '11px', 
-                                    padding: '2px 6px', 
-                                    borderRadius: '4px', 
-                                    background: dept.role === 'LEADER' ? '#dbeafe' : '#f1f5f9', 
-                                    color: dept.role === 'LEADER' ? '#1e40af' : '#475569',
-                                    fontWeight: '600'
-                                  }}>
-                                    {dept.role === 'LEADER' ? '부서장' : '부서원'}
-                                  </span>
+                                {dept.role && dept.id ? (
+                                  <select
+                                    value={dept.role}
+                                    onChange={(e) => handleDepartmentRoleChange(dept.id, member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
+                                    style={{
+                                      padding: '4px 8px',
+                                      borderRadius: '6px',
+                                      border: '1px solid var(--border-color)',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      background: dept.role === 'TASK_MANAGER' ? '#ecfeff' : dept.role === 'LEADER' ? '#eff6ff' : '#f8fafc',
+                                      color: dept.role === 'TASK_MANAGER' ? '#0e7490' : dept.role === 'LEADER' ? '#1d4ed8' : '#475569'
+                                    }}
+                                  >
+                                    <option value="MEMBER">부서원</option>
+                                    <option value="TASK_MANAGER">Task 관리자</option>
+                                    <option value="LEADER">부서장</option>
+                                  </select>
+                                ) : (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>부서 미배치</span>
                                 )}
                               </div>
                             ))}
@@ -236,10 +254,11 @@ export default function Settings() {
                           <td style={{ whiteSpace: 'nowrap' }}>
                             <select 
                               value={member.role} 
-                              onChange={(e) => handleRoleChange(member.id, e.target.value as 'ADMIN' | 'MEMBER')}
+                              onChange={(e) => handleRoleChange(member.id, e.target.value as 'OWNER' | 'ADMIN' | 'MEMBER')}
                               style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
                               disabled={member.id === currentUser?.id}
                             >
+                              <option value="OWNER">조직장</option>
                               <option value="ADMIN">관리자</option>
                               <option value="MEMBER">일반 멤버</option>
                             </select>

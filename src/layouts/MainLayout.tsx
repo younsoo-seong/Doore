@@ -1,20 +1,27 @@
 import { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useNetwork } from '../context/NetworkContext';
 import { api } from '../api';
 import type { Notification, Company } from '../data/mockDB';
+import { companyRoleLabels, departmentRoleLabels } from '../utils/permissions';
+import { getDemoEvents, subscribeDemoEvents } from '../utils/eventBus';
+import type { DemoEvent } from '../utils/eventBus';
 import '../styles/Notification.css';
 
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentUser, currentCompany, setCurrentCompany, logout } = useAuth();
+  const { isOffline, syncState, simulateDisconnect, simulateReconnect } = useNetwork();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [userCompanies, setUserCompanies] = useState<Company[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState<'unread' | 'read'>('unread');
+  const [latestEvent, setLatestEvent] = useState<DemoEvent>(() => getDemoEvents()[0]);
+  const [roleSummary, setRoleSummary] = useState<{ companyRole?: string; departmentRole?: string }>({});
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
@@ -35,6 +42,37 @@ export default function MainLayout() {
     }
     fetchInitialData();
   }, [currentUser]);
+
+  useEffect(() => {
+    return subscribeDemoEvents(setLatestEvent);
+  }, []);
+
+  useEffect(() => {
+    async function fetchRoles() {
+      if (!currentUser || !currentCompany) {
+        setRoleSummary({});
+        return;
+      }
+
+      const members = await api.getCompanyMembers(currentCompany.id);
+      const me = members.find((member: any) => member.id === currentUser.id);
+      const departments = await api.getDepartments(currentCompany.id);
+      let departmentRole: string | undefined;
+
+      for (const dept of departments) {
+        const deptMembers = await api.getDepartmentMembers(dept.id);
+        const deptMe = deptMembers.find((member: any) => member.id === currentUser.id);
+        if (deptMe?.role) {
+          departmentRole = deptMe.role;
+          break;
+        }
+      }
+
+      setRoleSummary({ companyRole: me?.role, departmentRole });
+    }
+
+    fetchRoles();
+  }, [currentUser, currentCompany]);
 
   // Click outside to close dropdown
   useEffect(() => {
@@ -86,6 +124,16 @@ export default function MainLayout() {
   if (location.pathname === '/docs') headerTitle = '부서 문서함';
   if (location.pathname === '/tasks') headerTitle = '내 TASK';
   if (location.pathname === '/approvals') headerTitle = '결재함';
+  if (location.pathname === '/architecture') headerTitle = 'API / ERD 이벤트';
+
+  const networkMessage =
+    syncState === 'offline'
+      ? '서버와 연결이 끊어졌습니다. 편집을 잠그고 재연결을 시도합니다.'
+      : syncState === 'syncing'
+        ? '임시 저장된 변경 사항을 최신 상태와 동기화 중입니다.'
+        : syncState === 'recovered'
+          ? '최신 상태로 다시 동기화되었습니다.'
+          : '';
 
   return (
     <div className="app-container">
@@ -158,6 +206,9 @@ export default function MainLayout() {
           <NavLink to="/approvals" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             ✅ 결재함
           </NavLink>
+          <NavLink to="/architecture" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            ⟲ API / ERD 이벤트
+          </NavLink>
         </nav>
       </aside>
 
@@ -167,6 +218,42 @@ export default function MainLayout() {
         <header className="top-header">
           <div className="header-title">{headerTitle}</div>
           <div className="header-actions">
+            <button
+              type="button"
+              onClick={() => navigate('/architecture')}
+              title={`${latestEvent.title}\n${latestEvent.api}\n변경 테이블: ${latestEvent.tables.join(', ')}`}
+              style={{
+                border: '1px solid var(--border-color)',
+                background: 'var(--bg-app)',
+                borderRadius: '999px',
+                padding: '6px 10px',
+                color: 'var(--text-secondary)',
+                fontSize: '12px',
+                fontWeight: 700,
+                maxWidth: '220px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              API 이벤트: {latestEvent.title}
+            </button>
+
+            <button
+              type="button"
+              onClick={isOffline || syncState === 'syncing' ? simulateReconnect : simulateDisconnect}
+              style={{
+                border: '1px solid var(--border-color)',
+                background: isOffline ? '#fef2f2' : 'transparent',
+                borderRadius: '6px',
+                padding: '6px 10px',
+                color: isOffline ? '#dc2626' : 'var(--text-secondary)',
+                fontSize: '12px',
+                fontWeight: 700
+              }}
+            >
+              {isOffline || syncState === 'syncing' ? '네트워크 복구' : '네트워크 단절'}
+            </button>
             
             {/* Notification Wrapper */}
             <div className="notification-wrapper" ref={dropdownRef}>
@@ -231,7 +318,13 @@ export default function MainLayout() {
 
             <div className="user-profile">
               <div className="avatar">{currentUser?.name?.charAt(0) || 'U'}</div>
-              <span className="user-name">{currentUser?.name}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                <span className="user-name">{currentUser?.name}</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                  {roleSummary.companyRole ? companyRoleLabels[roleSummary.companyRole as keyof typeof companyRoleLabels] : '역할 없음'}
+                  {roleSummary.departmentRole ? ` / ${departmentRoleLabels[roleSummary.departmentRole as keyof typeof departmentRoleLabels]}` : ''}
+                </span>
+              </div>
             </div>
             
             <button 
@@ -251,6 +344,41 @@ export default function MainLayout() {
             </button>
           </div>
         </header>
+
+        {syncState !== 'online' && (
+          <div
+            style={{
+              borderBottom: '1px solid #facc15',
+              background: syncState === 'offline' ? '#fef2f2' : syncState === 'syncing' ? '#fffbeb' : '#ecfdf5',
+              color: syncState === 'offline' ? '#b91c1c' : syncState === 'syncing' ? '#92400e' : '#047857',
+              padding: '10px 32px',
+              fontSize: '13px',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <span>{networkMessage}</span>
+            {syncState === 'offline' && (
+              <button
+                type="button"
+                onClick={simulateReconnect}
+                style={{
+                  border: '1px solid currentColor',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  background: 'transparent',
+                  color: 'inherit',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                재연결
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Scrollable Content */}
         <div className="content-scrollable">

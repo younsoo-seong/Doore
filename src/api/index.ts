@@ -1,5 +1,6 @@
 import { db, saveDB } from '../data/mockDB';
 import type { User } from '../data/mockDB';
+import { emitDemoEvent } from '../utils/eventBus';
 
 // Simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -35,7 +36,10 @@ export const api = {
       task_assignees: [...db.task_assignees],
       users: [...db.users],
       notifications: [...db.notifications],
-      department_members: [...db.department_members]
+      department_members: [...db.department_members],
+      companies: [...db.companies],
+      departments: [...db.departments],
+      company_members: [...db.company_members],
     };
   },
 
@@ -48,7 +52,13 @@ export const api = {
   getTasksData: async (documentId?: number) => {
     await delay(400);
     const tasks = documentId ? db.tasks.filter((t: any) => t.document_id === documentId) : db.tasks;
-    return { tasks, documents: [...db.documents], task_assignees: [...db.task_assignees] };
+    return {
+      tasks,
+      documents: [...db.documents],
+      task_assignees: [...db.task_assignees],
+      users: [...db.users],
+      department_members: [...db.department_members],
+    };
   },
 
   // Notifications
@@ -88,7 +98,7 @@ export const api = {
       name, created_at: new Date().toISOString()
     };
     db.companies.push(newCompany);
-    db.company_members.push({ company_id: newCompany.id, user_id: userId, role: 'ADMIN', joined_at: new Date().toISOString() });
+    db.company_members.push({ company_id: newCompany.id, user_id: userId, role: 'OWNER', joined_at: new Date().toISOString() });
     
     // Create a default department
     const newDept = {
@@ -99,6 +109,15 @@ export const api = {
     db.department_members.push({ department_id: newDept.id, user_id: userId, role: 'LEADER' });
     
     saveDB();
+    emitDemoEvent({
+      title: '조직 생성',
+      api: 'POST /api/v1/companies',
+      method: 'POST',
+      tables: ['companies', 'company_members', 'departments'],
+      summary: '새 조직을 만들고 생성자를 조직장으로 등록합니다.',
+      payload: `{ name: "${name}" }`,
+      result: `company_id=${newCompany.id}, role=OWNER`,
+    });
     return newCompany;
   },
 
@@ -124,6 +143,7 @@ export const api = {
       const userDepts = deptMembers.map((dm: any) => {
         const department = companyDepts.find((d: any) => d.id === dm.department_id);
         return {
+          id: department ? department.id : null,
           name: department ? department.name : '소속 부서 없음',
           role: dm.role
         };
@@ -133,27 +153,48 @@ export const api = {
         ...user, 
         role: m.role, 
         joined_at: m.joined_at,
-        departments: userDepts.length > 0 ? userDepts : [{ name: '소속 부서 없음', role: null }]
+        departments: userDepts.length > 0 ? userDepts : [{ id: null, name: '소속 부서 없음', role: null }]
       };
     });
   },
 
-  addCompanyMember: async (companyId: number, email: string) => {
+  addCompanyMember: async (companyId: number, email: string, role: 'OWNER' | 'ADMIN' | 'MEMBER' = 'MEMBER') => {
     await delay(400);
     const user = db.users.find((u: any) => u.email === email);
     if (!user) throw new Error('해당 이메일로 가입된 유저를 찾을 수 없습니다.');
     const exists = db.company_members.find((cm: any) => cm.company_id === companyId && cm.user_id === user.id);
     if (exists) throw new Error('이미 소속된 멤버입니다.');
-    const newMember = { company_id: companyId, user_id: user.id, role: 'MEMBER' as const, joined_at: new Date().toISOString() };
+    const newMember = { company_id: companyId, user_id: user.id, role, joined_at: new Date().toISOString() };
     db.company_members.push(newMember);
     saveDB();
+    emitDemoEvent({
+      title: '조직원 초대',
+      api: 'POST /api/v1/companies/{companyId}/members',
+      method: 'POST',
+      tables: ['company_members', 'notifications'],
+      summary: '가입된 사용자를 조직에 초대하고 회사 권한을 부여합니다.',
+      payload: `{ email: "${email}", role: "${role}" }`,
+      result: `${user.name} 조직 합류`,
+    });
     return { ...user, ...newMember, department_name: '소속 부서 없음' };
   },
 
-  updateMemberRole: async (companyId: number, userId: number, role: 'ADMIN' | 'MEMBER') => {
+  updateMemberRole: async (companyId: number, userId: number, role: 'OWNER' | 'ADMIN' | 'MEMBER') => {
     await delay(200);
     const member = db.company_members.find((cm: any) => cm.company_id === companyId && cm.user_id === userId);
-    if (member) { member.role = role; saveDB(); }
+    if (member) {
+      member.role = role;
+      saveDB();
+      emitDemoEvent({
+        title: '조직 권한 변경',
+        api: 'PATCH /api/v1/companies/{companyId}/members/{userId}',
+        method: 'PATCH',
+        tables: ['company_members'],
+        summary: '조직장/관리자/조직원 권한을 갱신합니다.',
+        payload: `{ role: "${role}" }`,
+        result: `user_id=${userId}`,
+      });
+    }
     return true;
   },
 
@@ -190,6 +231,15 @@ export const api = {
     };
     db.departments.push(newDept);
     saveDB();
+    emitDemoEvent({
+      title: '부서 생성',
+      api: 'POST /api/v1/companies/{companyId}/departments',
+      method: 'POST',
+      tables: ['departments'],
+      summary: '조직 하위에 협업 부서를 생성합니다.',
+      payload: `{ name: "${name}" }`,
+      result: `department_id=${newDept.id}`,
+    });
     return newDept;
   },
 
@@ -209,21 +259,39 @@ export const api = {
     });
   },
 
-  addDepartmentMember: async (departmentId: number, userId: number, role: 'LEADER' | 'MEMBER') => {
+  addDepartmentMember: async (departmentId: number, userId: number, role: 'LEADER' | 'TASK_MANAGER' | 'MEMBER') => {
     await delay(300);
     const exists = db.department_members.find((dm: any) => dm.department_id === departmentId && dm.user_id === userId);
     if (exists) throw new Error('이미 이 부서에 소속되어 있습니다.');
     db.department_members.push({ department_id: departmentId, user_id: userId, role });
     saveDB();
+    emitDemoEvent({
+      title: role === 'TASK_MANAGER' ? 'Task 관리자 배치' : '부서원 배치',
+      api: 'POST /api/v1/departments/{deptId}/members',
+      method: 'POST',
+      tables: ['department_members', 'notifications'],
+      summary: '부서에 사용자를 배치하고 부서장/Task 관리자/부서원 역할을 부여합니다.',
+      payload: `{ user_id: ${userId}, role: "${role}" }`,
+      result: `department_id=${departmentId}`,
+    });
     return true;
   },
 
-  updateDepartmentMemberRole: async (departmentId: number, userId: number, role: 'LEADER' | 'MEMBER') => {
+  updateDepartmentMemberRole: async (departmentId: number, userId: number, role: 'LEADER' | 'TASK_MANAGER' | 'MEMBER') => {
     await delay(200);
     const member = db.department_members.find((dm: any) => dm.department_id === departmentId && dm.user_id === userId);
     if (member) {
       member.role = role;
       saveDB();
+      emitDemoEvent({
+        title: '부서 권한 변경',
+        api: 'PATCH /api/v1/departments/{deptId}/members/{userId}',
+        method: 'PATCH',
+        tables: ['department_members'],
+        summary: '계정을 부서장, Task 관리자 또는 부서원으로 변경합니다.',
+        payload: `{ role: "${role}" }`,
+        result: `user_id=${userId}`,
+      });
     }
     return true;
   },
@@ -246,35 +314,84 @@ export const api = {
     };
     db.documents.push(newDoc);
     saveDB();
+    emitDemoEvent({
+      title: '부서 문서 생성',
+      api: 'POST /api/v1/departments/{departmentId}/documents',
+      method: 'POST',
+      tables: ['documents'],
+      summary: '부서장이 협업 문서를 생성하고 Task 분할을 시작합니다.',
+      payload: `{ title: "${title}" }`,
+      result: `document.status=WORKING`,
+    });
     return newDoc;
   },
 
   createTask: async (documentId: number, title: string, userIds: number | number[]) => {
     await delay(300);
+    const ids = Array.isArray(userIds) ? userIds : [userIds];
+    const targetIds = ids.slice(0, 5); // Limit max 5
+    const now = new Date().toISOString();
     const newTask = {
       id: db.tasks.length > 0 ? Math.max(...db.tasks.map((t: any) => t.id)) + 1 : 1,
-      document_id: documentId, title, content: '',
-      status: 'TODO' as const, priority: 'MEDIUM' as const,
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+      document_id: documentId,
+      title,
+      requirement: '',
+      content: '',
+      status: 'TODO' as const,
+      due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
+      created_by: targetIds[0] || 1,
+      assignee_count: targetIds.length,
+      insertion_index: db.tasks.filter((t: any) => t.document_id === documentId).length,
+      block_order: db.tasks.filter((t: any) => t.document_id === documentId).length + 1,
+      created_at: now,
+      updated_at: now
     };
     db.tasks.push(newTask);
 
-    const ids = Array.isArray(userIds) ? userIds : [userIds];
-    const targetIds = ids.slice(0, 5); // Limit max 5
     targetIds.forEach((uid: number) => {
       if (uid > 0) {
-        db.task_assignees.push({ task_id: newTask.id, user_id: uid });
+        db.task_assignees.push({ task_id: newTask.id, user_id: uid, assigned_at: now });
+        db.notifications.push({
+          id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+          user_id: uid,
+          type: 'TASK_ASSIGNED',
+          message: `새로운 Task 담당자로 지정되었습니다: ${title}`,
+          is_read: false,
+          created_at: now,
+        });
       }
     });
 
     saveDB();
+    emitDemoEvent({
+      title: 'Task 생성 및 담당자 할당',
+      api: 'POST /api/v1/documents/{documentId}/tasks',
+      method: 'POST',
+      tables: ['tasks', 'task_assignees', 'notifications'],
+      summary: '문서를 Task 단위로 분할하고 담당 부서원을 지정합니다.',
+      payload: `{ title: "${title}", assignee_ids: [${targetIds.join(', ')}] }`,
+      result: `task_id=${newTask.id}, status=TODO`,
+    });
     return newTask;
   },
 
   updateTaskStatus: async (taskId: number, status: 'TODO'|'DOING'|'DONE') => {
     await delay(200);
     const task = db.tasks.find((t: any) => t.id === taskId);
-    if (task) { task.status = status; saveDB(); }
+    if (task) {
+      task.status = status;
+      task.updated_at = new Date().toISOString();
+      saveDB();
+      emitDemoEvent({
+        title: status === 'DONE' ? 'Task 완료 및 잠금' : 'Task 상태 변경',
+        api: 'PATCH /api/v1/tasks/{taskId}/status',
+        method: 'PATCH',
+        tables: ['tasks', 'notifications'],
+        summary: status === 'DONE' ? '완료된 Task를 읽기 전용으로 잠급니다.' : 'Task 칸반 상태를 갱신합니다.',
+        payload: `{ status: "${status}" }`,
+        result: `task_id=${taskId}`,
+      });
+    }
     return true;
   },
 
@@ -286,6 +403,15 @@ export const api = {
       task.content = content;
       task.updated_at = new Date().toISOString();
       saveDB();
+      emitDemoEvent({
+        title: '실시간 공동 편집 병합',
+        api: 'PUB /pub/tasks/{taskId}/edit',
+        method: 'WSS',
+        tables: ['tasks'],
+        summary: '입력 변경분을 서버 정책 계층 검증 후 CRDT 병합 결과로 반영합니다.',
+        payload: '{ version, patch }',
+        result: `task_id=${taskId} updated`,
+      });
     }
     return task;
   },
@@ -311,9 +437,18 @@ export const api = {
     db.task_assignees = db.task_assignees.filter((ta: any) => ta.task_id !== taskId);
     // Push new assignees
     userIds.forEach((uid) => {
-      db.task_assignees.push({ task_id: taskId, user_id: uid });
+      db.task_assignees.push({ task_id: taskId, user_id: uid, assigned_at: new Date().toISOString() });
     });
     saveDB();
+    emitDemoEvent({
+      title: 'Task 담당자 재할당',
+      api: 'POST /api/v1/tasks/{taskId}/assignees',
+      method: 'POST',
+      tables: ['task_assignees', 'notifications'],
+      summary: 'Task 담당자 목록을 갱신합니다.',
+      payload: `{ assignee_ids: [${userIds.join(', ')}] }`,
+      result: `task_id=${taskId}`,
+    });
     return true;
   },
 
@@ -385,8 +520,99 @@ export const api = {
     
     doc.content = integratedContent.trim();
     doc.status = 'PENDING';
+    const dept = db.departments.find((d: any) => d.id === doc.department_id);
+    const owner = db.company_members.find((cm: any) => cm.company_id === dept?.company_id && cm.role === 'OWNER');
+    doc.approver_id = owner?.user_id || doc.approver_id;
     doc.updated_at = new Date().toISOString();
+    if (doc.approver_id) {
+      db.notifications.push({
+        id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+        user_id: doc.approver_id,
+        type: 'DOC_APPROVAL_REQUEST',
+        message: `문서 승인 요청이 도착했습니다: ${doc.title}`,
+        is_read: false,
+        created_at: new Date().toISOString(),
+      });
+    }
     saveDB();
+    emitDemoEvent({
+      title: '문서 통합 및 승인 요청',
+      api: 'POST /api/v1/documents/{documentId}/approval-requests',
+      method: 'POST',
+      tables: ['documents', 'tasks', 'notifications'],
+      summary: '완료된 Task 결과물을 문서로 통합하고 PENDING 상태로 잠급니다.',
+      payload: '{}',
+      result: `document_id=${documentId}, status=PENDING`,
+    });
+    return doc;
+  },
+
+  getApprovalDocuments: async (userId: number) => {
+    await delay(300);
+    const approverDocs = db.documents.filter((d: any) => d.approver_id === userId || d.status === 'PENDING');
+    return {
+      documents: approverDocs,
+      tasks: [...db.tasks],
+      users: [...db.users],
+      departments: [...db.departments],
+    };
+  },
+
+  approveDocument: async (documentId: number, approverId: number) => {
+    await delay(400);
+    const doc = db.documents.find((d: any) => d.id === documentId);
+    if (!doc) throw new Error('문서를 찾을 수 없습니다.');
+    if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 승인할 수 있습니다.');
+    doc.status = 'APPROVED';
+    doc.approver_id = approverId;
+    doc.updated_at = new Date().toISOString();
+    db.notifications.push({
+      id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+      user_id: doc.created_by,
+      type: 'DOC_APPROVED',
+      message: `문서가 승인되었습니다: ${doc.title}`,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+    saveDB();
+    emitDemoEvent({
+      title: '문서 승인',
+      api: 'PATCH /api/v1/documents/{documentId}/approve',
+      method: 'PATCH',
+      tables: ['documents', 'notifications'],
+      summary: '조직장이 결재 대기 문서를 승인하고 영구 읽기 전용 상태로 전환합니다.',
+      payload: '{}',
+      result: `document_id=${documentId}, status=APPROVED`,
+    });
+    return doc;
+  },
+
+  rejectDocument: async (documentId: number, approverId: number, reason: string) => {
+    await delay(400);
+    const doc = db.documents.find((d: any) => d.id === documentId);
+    if (!doc) throw new Error('문서를 찾을 수 없습니다.');
+    if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 반려할 수 있습니다.');
+    doc.status = 'REJECTED';
+    doc.approver_id = approverId;
+    doc.updated_at = new Date().toISOString();
+    db.notifications.push({
+      id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+      user_id: doc.created_by,
+      type: 'DOC_REJECTED',
+      message: `문서가 반려되었습니다: ${doc.title}${reason ? ` (${reason})` : ''}`,
+      is_read: false,
+      created_at: new Date().toISOString(),
+    });
+    saveDB();
+    emitDemoEvent({
+      title: '문서 반려',
+      api: 'PATCH /api/v1/documents/{documentId}/reject',
+      method: 'PATCH',
+      tables: ['documents', 'notifications'],
+      summary: '문서를 반려하고 재작업 흐름으로 되돌립니다.',
+      payload: `{ reason: "${reason}" }`,
+      result: `document_id=${documentId}, status=REJECTED`,
+    });
     return doc;
   }
 };

@@ -16,7 +16,7 @@ export interface Company {
 export interface CompanyMember {
   company_id: number;
   user_id: number;
-  role: 'ADMIN' | 'MEMBER';
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
   joined_at: string;
 }
 
@@ -30,7 +30,7 @@ export interface Department {
 export interface DepartmentMember {
   department_id: number;
   user_id: number;
-  role: 'LEADER' | 'MEMBER';
+  role: 'LEADER' | 'TASK_MANAGER' | 'MEMBER';
 }
 
 // 2. 문서 및 결재 도메인
@@ -80,6 +80,7 @@ export interface TaskFile {
 export interface TaskAssignee {
   task_id: number;
   user_id: number;
+  assigned_at?: string;
 }
 
 export interface Comment {
@@ -94,7 +95,7 @@ export interface Comment {
 export interface Notification {
   id: number;
   user_id: number;
-  type: 'TASK_ASSIGNED' | 'TASK_STATUS_CHANGED' | 'DOC_APPROVAL_REQUEST' | 'DOC_REJECTED';
+  type: 'TASK_ASSIGNED' | 'TASK_STATUS_CHANGED' | 'DOC_APPROVAL_REQUEST' | 'DOC_APPROVED' | 'DOC_REJECTED';
   message: string;
   is_read: boolean;
   created_at: string;
@@ -117,10 +118,10 @@ export const companies: Company[] = [
 ];
 
 export const company_members: CompanyMember[] = [
-  { company_id: 1, user_id: 1, role: 'ADMIN', joined_at: '2026-01-10T09:00:00Z' },
+  { company_id: 1, user_id: 1, role: 'OWNER', joined_at: '2026-01-10T09:00:00Z' },
   { company_id: 1, user_id: 2, role: 'MEMBER', joined_at: '2026-02-15T10:30:00Z' },
   { company_id: 1, user_id: 3, role: 'MEMBER', joined_at: '2026-03-20T14:15:00Z' },
-  { company_id: 1, user_id: 4, role: 'MEMBER', joined_at: '2026-04-05T08:45:00Z' },
+  { company_id: 1, user_id: 4, role: 'ADMIN', joined_at: '2026-04-05T08:45:00Z' },
   { company_id: 1, user_id: 5, role: 'MEMBER', joined_at: '2026-05-01T11:20:00Z' }
 ];
 
@@ -130,8 +131,8 @@ export const departments: Department[] = [
 ];
 
 export const department_members: DepartmentMember[] = [
-  { department_id: 101, user_id: 1, role: 'LEADER' }, // 김두레
-  { department_id: 101, user_id: 2, role: 'MEMBER' }, // 홍길동
+  { department_id: 101, user_id: 1, role: 'MEMBER' }, // 김두레
+  { department_id: 101, user_id: 2, role: 'TASK_MANAGER' }, // 홍길동
   { department_id: 101, user_id: 3, role: 'MEMBER' }, // 이서연
   { department_id: 102, user_id: 4, role: 'LEADER' }, // 박지훈
   { department_id: 102, user_id: 5, role: 'MEMBER' }  // 최유진
@@ -281,8 +282,33 @@ const defaultDB = {
   notifications
 };
 
+function normalizeDB(database: any) {
+  const owner = database.company_members?.find((cm: CompanyMember) => cm.company_id === 1 && cm.user_id === 1);
+  if (owner) owner.role = 'OWNER';
+
+  const plannerAdmin = database.company_members?.find((cm: CompanyMember) => cm.company_id === 1 && cm.user_id === 4);
+  if (plannerAdmin && plannerAdmin.role === 'MEMBER') plannerAdmin.role = 'ADMIN';
+
+  const ownerDeptMember = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 1);
+  if (ownerDeptMember) ownerDeptMember.role = 'MEMBER';
+
+  const taskManager = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 2);
+  if (taskManager) taskManager.role = 'TASK_MANAGER';
+
+  database.department_members?.forEach((dm: DepartmentMember) => {
+    if (!['LEADER', 'TASK_MANAGER', 'MEMBER'].includes(dm.role)) dm.role = 'MEMBER';
+  });
+
+  database.task_assignees?.forEach((assignee: TaskAssignee) => {
+    assignee.assigned_at ||= '2026-05-09T09:00:00Z';
+  });
+
+  return database;
+}
+
 const stored = localStorage.getItem('doore_mock_db');
-export const db = stored ? JSON.parse(stored) : defaultDB;
+export const db = normalizeDB(stored ? JSON.parse(stored) : defaultDB);
+localStorage.setItem('doore_mock_db', JSON.stringify(db));
 
 export const saveDB = () => {
   localStorage.setItem('doore_mock_db', JSON.stringify(db));

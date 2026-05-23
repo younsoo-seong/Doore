@@ -1,10 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../context/AuthContext';
+import { useNetwork } from '../context/NetworkContext';
+import { canEditTask } from '../utils/permissions';
 
 export default function EditTask() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const { isOffline } = useNetwork();
   
   const [taskInfo, setTaskInfo] = useState<any>(null);
   const [documentInfo, setDocumentInfo] = useState<any>(null);
@@ -18,6 +23,7 @@ export default function EditTask() {
   // Assignee selection states
   const [deptMembers, setDeptMembers] = useState<any[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<number[]>([]);
+  const [myDeptRole, setMyDeptRole] = useState<string | null>(null);
 
   // Confirmation & Save indicators
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -42,6 +48,8 @@ export default function EditTask() {
         // 2. Fetch department members to populate assignee options
         const members = await api.getDepartmentMembers(document.department_id);
         setDeptMembers(members);
+        const me = members.find((member: any) => member.id === currentUser?.id);
+        setMyDeptRole(me?.role ?? null);
 
 
       } catch (error) {
@@ -53,7 +61,7 @@ export default function EditTask() {
       }
     }
     loadTaskDetails();
-  }, [taskId, navigate]);
+  }, [taskId, navigate, currentUser]);
 
 
 
@@ -73,6 +81,7 @@ export default function EditTask() {
   // Handle content auto-saving
   const handleContentSave = async (title: string, content: string) => {
     if (!taskInfo) return;
+    if (!isEditable) return;
     setSaveStatus('saving');
     try {
       await api.updateTaskContent(taskInfo.id, title, content);
@@ -84,6 +93,10 @@ export default function EditTask() {
 
   const handleStatusChange = async (newStatus: 'TODO' | 'DOING' | 'DONE') => {
     if (!taskInfo) return;
+    if (!isEditable && taskStatus !== newStatus) {
+      alert('잠금 상태에서는 진행 상태를 변경할 수 없습니다.');
+      return;
+    }
     try {
       await api.updateTaskStatus(taskInfo.id, newStatus);
       setTaskStatus(newStatus);
@@ -112,7 +125,22 @@ export default function EditTask() {
     );
   }
 
-  const isReadOnly = documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED';
+  const isEditable = canEditTask({
+    documentStatus: documentInfo.status,
+    taskStatus,
+    currentUserId: currentUser?.id,
+    assigneeIds: selectedAssignees,
+    departmentRole: myDeptRole,
+    isOffline,
+  });
+  const isReadOnly = !isEditable;
+  const lockReason = isOffline
+    ? '네트워크 연결이 끊겨 편집이 일시 중단되었습니다.'
+    : documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED'
+      ? '결재 잠금 상태의 문서입니다.'
+      : taskStatus === 'DONE'
+        ? '완료된 Task는 잠금 상태입니다.'
+        : '담당자 또는 Task 관리자만 편집할 수 있습니다.';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px', padding: '20px', position: 'relative' }}>
@@ -187,8 +215,8 @@ export default function EditTask() {
               textAlign: 'center',
               border: '2px solid #f59e0b'
             }}>
-              <h2 style={{ color: '#f59e0b', fontSize: '20px', marginBottom: '8px' }}>[승인 대기 중인 문서입니다]</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>현재 문서는 읽기 전용 상태입니다.</p>
+              <h2 style={{ color: '#f59e0b', fontSize: '20px', marginBottom: '8px' }}>[읽기 전용]</h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>{lockReason}</p>
             </div>
           </div>
         )}
@@ -200,7 +228,8 @@ export default function EditTask() {
             <select 
               value={taskStatus}
               onChange={(e) => handleStatusChange(e.target.value as any)}
-              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', cursor: 'pointer' }}
+              disabled={isReadOnly && taskStatus === 'DONE'}
+              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
             >
               <option value="TODO">할 일 (TODO)</option>
               <option value="DOING">진행 중 (DOING)</option>
@@ -226,7 +255,7 @@ export default function EditTask() {
                       key={uid} 
                       className="avatar" 
                       style={{ width: 22, height: 22, fontSize: 9 }}
-                      title={member ? `${member.name} (${member.role === 'LEADER' ? '부서장' : '부서원'})` : ''}
+                      title={member ? `${member.name} (${member.role === 'LEADER' ? '부서장' : member.role === 'TASK_MANAGER' ? 'Task 관리자' : '부서원'})` : ''}
                     >
                       {member ? member.name.charAt(0) : ''}
                     </div>
@@ -253,6 +282,11 @@ export default function EditTask() {
           
           {/* Left Main: Editor Canvas */}
           <div className="editor-canvas" style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+            {isOffline && (
+              <div style={{ marginBottom: '16px', padding: '10px 12px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #facc15', color: '#92400e', fontSize: '13px', fontWeight: 700 }}>
+                로컬 임시 저장 모드입니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
+              </div>
+            )}
             {/* Simulated collaborative peer cursor */}
             {!isReadOnly && (
               <div className="mock-cursor" style={{ top: '160px', left: '260px' }}>

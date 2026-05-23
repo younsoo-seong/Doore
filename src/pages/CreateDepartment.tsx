@@ -11,7 +11,7 @@ export default function CreateDepartment() {
   const [deptName, setDeptName] = useState('');
   const [companyMembers, setCompanyMembers] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [memberRoles, setMemberRoles] = useState<Record<number, 'LEADER' | 'MEMBER'>>({});
+  const [memberRoles, setMemberRoles] = useState<Record<number, 'LEADER' | 'TASK_MANAGER' | 'MEMBER'>>({});
   const [isCreating, setIsCreating] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -132,7 +132,7 @@ export default function CreateDepartment() {
                 renderExtraActions={(userId) => (
                   <select
                     value={memberRoles[userId] || 'MEMBER'}
-                    onChange={(e) => setMemberRoles(prev => ({ ...prev, [userId]: e.target.value as 'LEADER' | 'MEMBER' }))}
+                    onChange={(e) => setMemberRoles(prev => ({ ...prev, [userId]: e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER' }))}
                     style={{
                       padding: '5px 8px',
                       borderRadius: '6px',
@@ -144,6 +144,7 @@ export default function CreateDepartment() {
                     }}
                   >
                     <option value="MEMBER">부서원</option>
+                    <option value="TASK_MANAGER">Task 관리자</option>
                     <option value="LEADER">부서장</option>
                   </select>
                 )}

@@ -4,6 +4,12 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import '../styles/Auth.css';
 
+const demoAccounts = [
+  { label: '조직장', email: 'admin@doore.com', description: '승인/반려, 조직 관리' },
+  { label: 'Task 관리자', email: 'gildong@doore.com', description: '문서 생성, Task 분할' },
+  { label: '부서원', email: 'sylee@doore.com', description: '내 Task 편집' },
+];
+
 export default function Login() {
   const [email, setEmail] = useState('admin@doore.com');
   const [password, setPassword] = useState('password');
@@ -48,6 +54,30 @@ export default function Login() {
         </div>
 
         {error && <div className="auth-error">{error}</div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+          {demoAccounts.map((account) => (
+            <button
+              key={account.email}
+              type="button"
+              onClick={() => {
+                setEmail(account.email);
+                setPassword('password');
+              }}
+              style={{
+                border: email === account.email ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+                background: email === account.email ? 'var(--primary-light)' : 'var(--bg-app)',
+                color: email === account.email ? 'var(--primary)' : 'var(--text-primary)',
+                borderRadius: '8px',
+                padding: '10px',
+                textAlign: 'left'
+              }}
+            >
+              <div style={{ fontSize: '12px', fontWeight: 800 }}>{account.label}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>{account.description}</div>
+            </button>
+          ))}
+        </div>
 
         <form className="auth-form" onSubmit={handleLogin}>
           <div className="form-group">
