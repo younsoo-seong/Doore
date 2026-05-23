@@ -1,0 +1,115 @@
+export interface ApiHintContent {
+  title: string;
+  api: string;
+  erd: string[];
+  event?: string;
+  result: string;
+}
+
+export const apiHints = {
+  createCompany: {
+    title: '조직 생성',
+    api: 'POST /api/v1/companies',
+    erd: ['companies', 'company_members', 'departments'],
+    event: '회사 생성 후 생성자를 OWNER로 등록',
+    result: '조직 워크스페이스와 기본 부서가 생성됩니다.',
+  },
+  inviteCompanyMember: {
+    title: '조직원 초대',
+    api: 'POST /api/v1/companies/{companyId}/members',
+    erd: ['company_members', 'notifications'],
+    event: '회사 멤버 추가',
+    result: '초대된 사용자가 조직 멤버 목록에 표시됩니다.',
+  },
+  updateCompanyRole: {
+    title: '회사 권한 변경',
+    api: 'PATCH /api/v1/companies/{companyId}/members/{userId}',
+    erd: ['company_members'],
+    event: 'OWNER / ADMIN / MEMBER 변경',
+    result: '계정의 조직 권한이 즉시 변경됩니다.',
+  },
+  createDepartment: {
+    title: '부서 생성',
+    api: 'POST /api/v1/companies/{companyId}/departments',
+    erd: ['departments'],
+    event: '조직 하위 부서 생성',
+    result: '부서 문서함에 새 부서가 추가됩니다.',
+  },
+  assignDepartmentMember: {
+    title: '부서 배치 및 권한 부여',
+    api: 'POST /api/v1/departments/{deptId}/members',
+    erd: ['department_members', 'notifications'],
+    event: 'LEADER / TASK_MANAGER / MEMBER 배치',
+    result: '부서 역할에 따라 문서/Task 권한이 달라집니다.',
+  },
+  updateDepartmentRole: {
+    title: '부서 권한 변경',
+    api: 'PATCH /api/v1/departments/{deptId}/members/{userId}',
+    erd: ['department_members'],
+    event: '부서장 또는 Task 관리자 지정',
+    result: 'Task 분할과 담당자 지정 권한이 즉시 반영됩니다.',
+  },
+  createDocument: {
+    title: '부서 문서 생성',
+    api: 'POST /api/v1/departments/{departmentId}/documents',
+    erd: ['documents'],
+    event: '문서 status=WORKING',
+    result: '새 문서가 부서 문서함에 생성됩니다.',
+  },
+  createTask: {
+    title: 'Task 생성 및 담당자 지정',
+    api: 'POST /api/v1/documents/{documentId}/tasks',
+    erd: ['tasks', 'task_assignees', 'notifications'],
+    event: 'TASK_ASSIGNED 알림 발생',
+    result: '담당자 내 Task 보드에 TODO 카드가 표시됩니다.',
+  },
+  updateTaskStatus: {
+    title: 'Task 상태 변경',
+    api: 'PATCH /api/v1/tasks/{taskId}/status',
+    erd: ['tasks', 'notifications'],
+    event: 'TODO -> DOING -> DONE',
+    result: 'DONE이 되면 Task가 읽기 전용으로 잠깁니다.',
+  },
+  editTaskRealtime: {
+    title: 'Task 실시간 편집',
+    api: 'PUB /pub/tasks/{taskId}/edit',
+    erd: ['tasks'],
+    event: 'WebSocket patch 전송, OT 검증, CRDT 병합',
+    result: '변경 내용이 Task content에 반영됩니다.',
+  },
+  requestApproval: {
+    title: '문서 통합 및 승인 요청',
+    api: 'POST /api/v1/documents/{documentId}/approval-requests',
+    erd: ['documents', 'tasks', 'notifications'],
+    event: 'DOC_APPROVAL_REQUEST 알림 발생',
+    result: '모든 Task 결과가 통합되고 문서가 PENDING으로 잠깁니다.',
+  },
+  approveDocument: {
+    title: '문서 승인',
+    api: 'PATCH /api/v1/documents/{documentId}/approve',
+    erd: ['documents', 'notifications'],
+    event: 'DOCUMENT_APPROVED 알림 발생',
+    result: '문서가 APPROVED로 전환되고 최종본 추출이 가능합니다.',
+  },
+  rejectDocument: {
+    title: '문서 반려',
+    api: 'PATCH /api/v1/documents/{documentId}/reject',
+    erd: ['documents', 'notifications'],
+    event: 'DOCUMENT_REJECTED 알림 발생',
+    result: '문서가 REJECTED가 되어 재작업 흐름으로 돌아갑니다.',
+  },
+  readNotification: {
+    title: '알림 읽음 처리',
+    api: 'PATCH /api/v1/notifications/{notificationId}/read',
+    erd: ['notifications'],
+    event: 'is_read=true',
+    result: '알림 배지가 갱신됩니다.',
+  },
+  reconnectSync: {
+    title: '네트워크 복구 동기화',
+    api: 'PUB /pub/tasks/{taskId}/reconnect-sync',
+    erd: ['tasks'],
+    event: 'IndexedDB 임시 변경분 재전송',
+    result: '서버 최신 버전과 로컬 변경분을 다시 맞춥니다.',
+  },
+} satisfies Record<string, ApiHintContent>;

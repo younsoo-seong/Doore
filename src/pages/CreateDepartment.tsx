@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import MemberSelector from '../components/MemberSelector';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function CreateDepartment() {
   const navigate = useNavigate();
@@ -151,14 +153,16 @@ export default function CreateDepartment() {
               />
             </div>
 
-            <button 
-              type="submit" 
-              className="btn-primary"
-              disabled={isCreating || !deptName.trim()}
-              style={{ width: '100%', padding: '12px', fontSize: '14px', marginTop: '12px' }}
-            >
-              {isCreating ? '부서 개설 중...' : '부서 개설 및 배정 완료'}
-            </button>
+            <ApiHint hint={apiHints.assignDepartmentMember} align="left" fullWidth>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={isCreating || !deptName.trim()}
+                style={{ width: '100%', padding: '12px', fontSize: '14px', marginTop: '12px' }}
+              >
+                {isCreating ? '부서 개설 중...' : '부서 개설 및 배정 완료'}
+              </button>
+            </ApiHint>
           </form>
         )}
       </div>

@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import MemberSelector from '../components/MemberSelector';
 import { canManageTasks } from '../utils/permissions';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function Documents() {
   const navigate = useNavigate();
@@ -380,9 +382,11 @@ export default function Documents() {
           ))}
         </div>
         <div style={{ padding: '16px', borderTop: '1px solid var(--border-color)' }}>
-          <button onClick={() => navigate('/create-department')} style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', border: '1px dashed var(--primary)', color: 'var(--primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
-            + 새 부서 생성
-          </button>
+          <ApiHint hint={apiHints.createDepartment} align="left" fullWidth>
+            <button onClick={() => navigate('/create-department')} style={{ width: '100%', padding: '10px', backgroundColor: 'transparent', border: '1px dashed var(--primary)', color: 'var(--primary)', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>
+              + 새 부서 생성
+            </button>
+          </ApiHint>
         </div>
       </div>
 
@@ -411,14 +415,16 @@ export default function Documents() {
                 >
                   ⚙️ 부서 관리
                 </button>
-                <button
-                  onClick={openCreateDocModal}
-                  className="btn-primary"
-                  disabled={!canManageActiveDept}
-                  title={canManageActiveDept ? '문서를 만들고 Task를 분할합니다.' : '부서장 또는 Task 관리자 권한이 필요합니다.'}
-                >
-                  + 새 문서 생성
-                </button>
+                <ApiHint hint={apiHints.createDocument}>
+                  <button
+                    onClick={openCreateDocModal}
+                    className="btn-primary"
+                    disabled={!canManageActiveDept}
+                    title={canManageActiveDept ? '문서를 만들고 Task를 분할합니다.' : '부서장 또는 Task 관리자 권한이 필요합니다.'}
+                  >
+                    + 새 문서 생성
+                  </button>
+                </ApiHint>
               </div>
             </div>
 
@@ -452,13 +458,15 @@ export default function Documents() {
                         </td>
                         <td>{new Date(doc.updated_at).toLocaleDateString('ko-KR')}</td>
                         <td style={{ textAlign: 'right' }}>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); openAddTaskModal(doc.id); }}
-                            disabled={!canManageActiveDept || doc.status !== 'WORKING'}
-                            style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: canManageActiveDept && doc.status === 'WORKING' ? 'pointer' : 'not-allowed', opacity: canManageActiveDept && doc.status === 'WORKING' ? 1 : 0.45 }}
-                          >
-                            + Task 생성
-                          </button>
+                          <ApiHint hint={apiHints.createTask}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); openAddTaskModal(doc.id); }}
+                              disabled={!canManageActiveDept || doc.status !== 'WORKING'}
+                              style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: canManageActiveDept && doc.status === 'WORKING' ? 'pointer' : 'not-allowed', opacity: canManageActiveDept && doc.status === 'WORKING' ? 1 : 0.45 }}
+                            >
+                              + Task 생성
+                            </button>
+                          </ApiHint>
                         </td>
                       </tr>
                     );
@@ -526,16 +534,18 @@ export default function Documents() {
                     💡 본 문서는 소속 부서원들의 실시간 Task 기여분을 통합 및 병합한 최종 보고서입니다.
                   </div>
                   {viewingDoc.status === 'WORKING' && canManageActiveDept && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openAddTaskModal(viewingDoc.id);
-                      }}
-                      className="btn-primary"
-                      style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
-                    >
-                      ➕ Task 추가 발급
-                    </button>
+                    <ApiHint hint={apiHints.createTask}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openAddTaskModal(viewingDoc.id);
+                        }}
+                        className="btn-primary"
+                        style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
+                      >
+                        ➕ Task 추가 발급
+                      </button>
+                    </ApiHint>
                   )}
                 </div>
 
@@ -630,24 +640,26 @@ export default function Documents() {
               
               {/* Approval request request button */}
               {viewingDoc.status === 'WORKING' && canManageActiveDept && (
-                <button 
-                  onClick={handleRequestDocApproval}
-                  style={{ 
-                    padding: '10px 20px', 
-                    borderRadius: '8px', 
-                    fontSize: '13px', 
-                    fontWeight: '700',
-                    backgroundColor: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity 0.2s'
-                  }}
-                  onMouseOver={(e) => (e.currentTarget.style.opacity = '0.85')}
-                  onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
-                >
-                  🚀 문서로 통합 및 승인 요청
-                </button>
+                <ApiHint hint={apiHints.requestApproval}>
+                  <button
+                    onClick={handleRequestDocApproval}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      backgroundColor: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'opacity 0.2s'
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.opacity = '0.85')}
+                    onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
+                  >
+                    🚀 문서로 통합 및 승인 요청
+                  </button>
+                </ApiHint>
               )}
 
               {/* Creator Exclusive Word Editor Route */}
@@ -733,15 +745,17 @@ export default function Documents() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       
                       {/* Role selection dropdown inside Settings Modal */}
-                      <select
-                        value={member.role}
-                        onChange={(e) => handleUpdateDeptMemberRole(member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
-                        style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px' }}
-                      >
-                        <option value="MEMBER">부서원</option>
-                        <option value="TASK_MANAGER">Task 관리자</option>
-                        <option value="LEADER">부서장</option>
-                      </select>
+                      <ApiHint hint={apiHints.updateDepartmentRole}>
+                        <select
+                          value={member.role}
+                          onChange={(e) => handleUpdateDeptMemberRole(member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
+                          style={{ padding: '4px 6px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px' }}
+                        >
+                          <option value="MEMBER">부서원</option>
+                          <option value="TASK_MANAGER">Task 관리자</option>
+                          <option value="LEADER">부서장</option>
+                        </select>
+                      </ApiHint>
 
                       <button 
                         onClick={async () => {
@@ -804,14 +818,16 @@ export default function Documents() {
                     </select>
                   )}
                 />
-                <button 
-                  onClick={handleInviteMembers}
-                  disabled={selectedInviteIds.length === 0 || isInviting}
-                  className="btn-primary" 
-                  style={{ width: '100%', padding: '10px', marginTop: '12px', fontSize: '13px' }}
-                >
-                  {isInviting ? '부서원 추가 중...' : `선택된 ${selectedInviteIds.length}명 부서에 추가`}
-                </button>
+                <ApiHint hint={apiHints.assignDepartmentMember} align="left" fullWidth>
+                  <button
+                    onClick={handleInviteMembers}
+                    disabled={selectedInviteIds.length === 0 || isInviting}
+                    className="btn-primary"
+                    style={{ width: '100%', padding: '10px', marginTop: '12px', fontSize: '13px' }}
+                  >
+                    {isInviting ? '부서원 추가 중...' : `선택된 ${selectedInviteIds.length}명 부서에 추가`}
+                  </button>
+                </ApiHint>
               </div>
             </div>
 
@@ -968,14 +984,16 @@ export default function Documents() {
               >
                 취소
               </button>
-              <button 
-                onClick={submitCreateDocument}
-                className="btn-primary"
-                style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
-                disabled={isCreatingDoc}
-              >
-                {isCreatingDoc ? '개설 중...' : '개설 및 배정 완료 🚀'}
-              </button>
+              <ApiHint hint={apiHints.createTask}>
+                <button
+                  onClick={submitCreateDocument}
+                  className="btn-primary"
+                  style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
+                  disabled={isCreatingDoc}
+                >
+                  {isCreatingDoc ? '개설 중...' : '개설 및 배정 완료 🚀'}
+                </button>
+              </ApiHint>
             </div>
 
           </div>
@@ -1070,13 +1088,15 @@ export default function Documents() {
               >
                 취소
               </button>
-              <button 
-                onClick={submitAddTask}
-                className="btn-primary"
-                style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
-              >
-                발급 완료 🚀
-              </button>
+              <ApiHint hint={apiHints.createTask}>
+                <button
+                  onClick={submitAddTask}
+                  className="btn-primary"
+                  style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
+                >
+                  발급 완료 🚀
+                </button>
+              </ApiHint>
             </div>
           </div>
         </div>

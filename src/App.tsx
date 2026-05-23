@@ -7,7 +7,6 @@ import Documents from './pages/Documents';
 import Tasks from './pages/Tasks';
 import Approvals from './pages/Approvals';
 import Settings from './pages/Settings';
-import ArchitectureEvents from './pages/ArchitectureEvents';
 import CreateCompany from './pages/CreateCompany';
 import CreateDepartment from './pages/CreateDepartment';
 import EditTask from './pages/EditTask';
@@ -41,7 +40,6 @@ function App() {
                 <Route path="docs" element={<Documents />} />
                 <Route path="tasks" element={<Tasks />} />
                 <Route path="approvals" element={<Approvals />} />
-                <Route path="architecture" element={<ArchitectureEvents />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="create-company" element={<CreateCompany />} />
                 <Route path="create-department" element={<CreateDepartment />} />

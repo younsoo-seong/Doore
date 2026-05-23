@@ -4,6 +4,8 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
 import { canEditTask } from '../utils/permissions';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function EditTask() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -225,16 +227,18 @@ export default function EditTask() {
         <div className="editor-toolbar" style={{ pointerEvents: isReadOnly ? 'none' : 'auto', opacity: isReadOnly ? 0.6 : 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
           <div className="toolbar-group">
             <span style={{ fontSize: '13px', fontWeight: '600' }}>현재 상태:</span>
-            <select 
-              value={taskStatus}
-              onChange={(e) => handleStatusChange(e.target.value as any)}
-              disabled={isReadOnly && taskStatus === 'DONE'}
-              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
-            >
-              <option value="TODO">할 일 (TODO)</option>
-              <option value="DOING">진행 중 (DOING)</option>
-              <option value="DONE">완료됨 (DONE)</option>
-            </select>
+            <ApiHint hint={apiHints.updateTaskStatus} align="left">
+              <select
+                value={taskStatus}
+                onChange={(e) => handleStatusChange(e.target.value as any)}
+                disabled={isReadOnly && taskStatus === 'DONE'}
+                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
+              >
+                <option value="TODO">할 일 (TODO)</option>
+                <option value="DOING">진행 중 (DOING)</option>
+                <option value="DONE">완료됨 (DONE)</option>
+              </select>
+            </ApiHint>
           </div>
           
           <div className="toolbar-group">
@@ -284,7 +288,7 @@ export default function EditTask() {
           <div className="editor-canvas" style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
             {isOffline && (
               <div style={{ marginBottom: '16px', padding: '10px 12px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #facc15', color: '#92400e', fontSize: '13px', fontWeight: 700 }}>
-                로컬 임시 저장 모드입니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
+                서버 연결이 끊겨 변경사항을 로컬 IndexedDB에 임시 저장합니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
               </div>
             )}
             {/* Simulated collaborative peer cursor */}
@@ -296,18 +300,20 @@ export default function EditTask() {
             )}
 
             {/* Editable Task Title Input */}
-            <input 
-              type="text" 
-              className="doc-title-input" 
-              value={editTitle} 
-              onChange={(e) => {
-                setEditTitle(e.target.value);
-                handleContentSave(e.target.value, editContent);
-              }}
-              placeholder="태스크 제목을 입력하세요" 
-              readOnly={isReadOnly}
-              style={{ width: '100%', fontSize: '24px', fontWeight: '700', border: 'none', outline: 'none', marginBottom: '20px', color: 'var(--text-primary)', backgroundColor: 'transparent' }}
-            />
+            <ApiHint hint={apiHints.editTaskRealtime} align="left" fullWidth>
+              <input
+                type="text"
+                className="doc-title-input"
+                value={editTitle}
+                onChange={(e) => {
+                  setEditTitle(e.target.value);
+                  handleContentSave(e.target.value, editContent);
+                }}
+                placeholder="태스크 제목을 입력하세요"
+                readOnly={isReadOnly}
+                style={{ width: '100%', fontSize: '24px', fontWeight: '700', border: 'none', outline: 'none', marginBottom: '20px', color: 'var(--text-primary)', backgroundColor: 'transparent' }}
+              />
+            </ApiHint>
 
             {/* Editable Task Content Area */}
             <textarea

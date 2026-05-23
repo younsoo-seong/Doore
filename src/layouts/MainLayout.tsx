@@ -5,26 +5,33 @@ import { useNetwork } from '../context/NetworkContext';
 import { api } from '../api';
 import type { Notification, Company } from '../data/mockDB';
 import { companyRoleLabels, departmentRoleLabels } from '../utils/permissions';
-import { getDemoEvents, subscribeDemoEvents } from '../utils/eventBus';
-import type { DemoEvent } from '../utils/eventBus';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 import '../styles/Notification.css';
+
+const demoAccounts = [
+  { label: '조직장', email: 'admin@doore.com', name: '김두레', role: '승인/반려, 조직 관리' },
+  { label: 'Task 관리자', email: 'gildong@doore.com', name: '홍길동', role: '문서 생성, Task 분할' },
+  { label: '부서원', email: 'sylee@doore.com', name: '이서연', role: '내 Task 편집' },
+];
 
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser, currentCompany, setCurrentCompany, logout } = useAuth();
+  const { currentUser, currentCompany, setCurrentCompany, login, logout } = useAuth();
   const { isOffline, syncState, simulateDisconnect, simulateReconnect } = useNetwork();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [userCompanies, setUserCompanies] = useState<Company[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
+  const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
   const [activeTab, setActiveTab] = useState<'unread' | 'read'>('unread');
-  const [latestEvent, setLatestEvent] = useState<DemoEvent>(() => getDemoEvents()[0]);
   const [roleSummary, setRoleSummary] = useState<{ companyRole?: string; departmentRole?: string }>({});
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
+  const accountSwitcherRef = useRef<HTMLDivElement>(null);
 
   // Fetch notifications on mount
   useEffect(() => {
@@ -42,10 +49,6 @@ export default function MainLayout() {
     }
     fetchInitialData();
   }, [currentUser]);
-
-  useEffect(() => {
-    return subscribeDemoEvents(setLatestEvent);
-  }, []);
 
   useEffect(() => {
     async function fetchRoles() {
@@ -83,6 +86,9 @@ export default function MainLayout() {
       if (workspaceDropdownRef.current && !workspaceDropdownRef.current.contains(event.target as Node)) {
         setShowWorkspaceDropdown(false);
       }
+      if (accountSwitcherRef.current && !accountSwitcherRef.current.contains(event.target as Node)) {
+        setShowAccountSwitcher(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -102,6 +108,14 @@ export default function MainLayout() {
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const handleSwitchDemoAccount = async (email: string) => {
+    const response = await api.login(email, 'password');
+    login(response.user, response.token);
+    const companies = await api.getCompanies(response.user.id);
+    setCurrentCompany(companies[0] || null);
+    setShowAccountSwitcher(false);
   };
 
   const handleNotificationClick = async (notif: Notification) => {
@@ -124,15 +138,14 @@ export default function MainLayout() {
   if (location.pathname === '/docs') headerTitle = '부서 문서함';
   if (location.pathname === '/tasks') headerTitle = '내 TASK';
   if (location.pathname === '/approvals') headerTitle = '결재함';
-  if (location.pathname === '/architecture') headerTitle = 'API / ERD 이벤트';
 
   const networkMessage =
     syncState === 'offline'
-      ? '서버와 연결이 끊어졌습니다. 편집을 잠그고 재연결을 시도합니다.'
+      ? '서버와 연결이 끊겼습니다. 변경사항은 로컬 IndexedDB에 임시 저장하고 재연결을 시도합니다.'
       : syncState === 'syncing'
-        ? '임시 저장된 변경 사항을 최신 상태와 동기화 중입니다.'
+        ? '서버와 다시 연결 중입니다. IndexedDB 임시 변경분을 reconnect-sync로 전송합니다.'
         : syncState === 'recovered'
-          ? '최신 상태로 다시 동기화되었습니다.'
+          ? '재연결 완료. 로컬 IndexedDB 변경분이 서버 최신 상태와 동기화되었습니다.'
           : '';
 
   return (
@@ -206,9 +219,6 @@ export default function MainLayout() {
           <NavLink to="/approvals" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             ✅ 결재함
           </NavLink>
-          <NavLink to="/architecture" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            ⟲ API / ERD 이벤트
-          </NavLink>
         </nav>
       </aside>
 
@@ -218,42 +228,23 @@ export default function MainLayout() {
         <header className="top-header">
           <div className="header-title">{headerTitle}</div>
           <div className="header-actions">
-            <button
-              type="button"
-              onClick={() => navigate('/architecture')}
-              title={`${latestEvent.title}\n${latestEvent.api}\n변경 테이블: ${latestEvent.tables.join(', ')}`}
-              style={{
-                border: '1px solid var(--border-color)',
-                background: 'var(--bg-app)',
-                borderRadius: '999px',
-                padding: '6px 10px',
-                color: 'var(--text-secondary)',
-                fontSize: '12px',
-                fontWeight: 700,
-                maxWidth: '220px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap'
-              }}
-            >
-              API 이벤트: {latestEvent.title}
-            </button>
-
-            <button
-              type="button"
-              onClick={isOffline || syncState === 'syncing' ? simulateReconnect : simulateDisconnect}
-              style={{
-                border: '1px solid var(--border-color)',
-                background: isOffline ? '#fef2f2' : 'transparent',
-                borderRadius: '6px',
-                padding: '6px 10px',
-                color: isOffline ? '#dc2626' : 'var(--text-secondary)',
-                fontSize: '12px',
-                fontWeight: 700
-              }}
-            >
-              {isOffline || syncState === 'syncing' ? '네트워크 복구' : '네트워크 단절'}
-            </button>
+            <ApiHint hint={apiHints.reconnectSync}>
+              <button
+                type="button"
+                onClick={isOffline || syncState === 'syncing' ? simulateReconnect : simulateDisconnect}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: isOffline ? '#fef2f2' : 'transparent',
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  color: isOffline ? '#dc2626' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: 700
+                }}
+              >
+                {isOffline || syncState === 'syncing' ? '네트워크 복구' : '네트워크 단절'}
+              </button>
+            </ApiHint>
             
             {/* Notification Wrapper */}
             <div className="notification-wrapper" ref={dropdownRef}>
@@ -316,15 +307,76 @@ export default function MainLayout() {
               )}
             </div>
 
-            <div className="user-profile">
-              <div className="avatar">{currentUser?.name?.charAt(0) || 'U'}</div>
-              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-                <span className="user-name">{currentUser?.name}</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                  {roleSummary.companyRole ? companyRoleLabels[roleSummary.companyRole as keyof typeof companyRoleLabels] : '역할 없음'}
-                  {roleSummary.departmentRole ? ` / ${departmentRoleLabels[roleSummary.departmentRole as keyof typeof departmentRoleLabels]}` : ''}
-                </span>
-              </div>
+            <div className="user-profile" ref={accountSwitcherRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowAccountSwitcher(!showAccountSwitcher)}
+                title="데모 계정 전환"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  border: 'none',
+                  background: 'transparent',
+                  padding: 0,
+                  cursor: 'pointer'
+                }}
+              >
+                <div className="avatar">{currentUser?.name?.charAt(0) || 'U'}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, alignItems: 'flex-start' }}>
+                  <span className="user-name">{currentUser?.name}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
+                    {roleSummary.companyRole ? companyRoleLabels[roleSummary.companyRole as keyof typeof companyRoleLabels] : '역할 없음'}
+                    {roleSummary.departmentRole ? ` / ${departmentRoleLabels[roleSummary.departmentRole as keyof typeof departmentRoleLabels]}` : ''}
+                  </span>
+                </div>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800 }}>▼</span>
+              </button>
+
+              {showAccountSwitcher && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '42px',
+                    right: 0,
+                    zIndex: 2200,
+                    width: '260px',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    background: 'var(--bg-card)',
+                    boxShadow: '0 16px 34px rgba(15, 23, 42, 0.18)',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border-color)', fontSize: '12px', fontWeight: 800, color: 'var(--text-secondary)' }}>
+                    데모 계정 전환
+                  </div>
+                  {demoAccounts.map((account) => (
+                    <button
+                      key={account.email}
+                      type="button"
+                      onClick={() => handleSwitchDemoAccount(account.email)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        border: 0,
+                        borderBottom: '1px solid var(--border-color)',
+                        background: currentUser?.email === account.email ? 'var(--primary-light)' : 'var(--bg-card)',
+                        padding: '11px 12px',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>{account.name.charAt(0)}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>{account.name} · {account.label}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{account.role}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             
             <button 
@@ -361,21 +413,23 @@ export default function MainLayout() {
           >
             <span>{networkMessage}</span>
             {syncState === 'offline' && (
-              <button
-                type="button"
-                onClick={simulateReconnect}
-                style={{
-                  border: '1px solid currentColor',
-                  borderRadius: '6px',
-                  padding: '4px 10px',
-                  background: 'transparent',
-                  color: 'inherit',
-                  fontSize: '12px',
-                  fontWeight: 700
-                }}
-              >
-                재연결
-              </button>
+              <ApiHint hint={apiHints.reconnectSync}>
+                <button
+                  type="button"
+                  onClick={simulateReconnect}
+                  style={{
+                    border: '1px solid currentColor',
+                    borderRadius: '6px',
+                    padding: '4px 10px',
+                    background: 'transparent',
+                    color: 'inherit',
+                    fontSize: '12px',
+                    fontWeight: 700
+                  }}
+                >
+                  재연결
+                </button>
+              </ApiHint>
             )}
           </div>
         )}

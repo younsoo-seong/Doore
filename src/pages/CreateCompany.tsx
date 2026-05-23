@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import MemberSelector from '../components/MemberSelector';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function CreateCompany() {
   const navigate = useNavigate();
@@ -125,14 +127,16 @@ export default function CreateCompany() {
             </div>
 
             {/* Create Button */}
-            <button 
-              type="submit" 
-              className="btn-primary" 
-              disabled={isCreating || !companyName.trim()}
-              style={{ width: '100%', padding: '14px', borderRadius: '8px', fontSize: '15px', fontWeight: '600', marginTop: '12px' }}
-            >
-              {isCreating ? '회사 및 멤버 구성 생성 중...' : `회사 생성 및 ${selectedIds.length}명 초대 완료`}
-            </button>
+            <ApiHint hint={apiHints.createCompany} align="left" fullWidth>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={isCreating || !companyName.trim()}
+                style={{ width: '100%', padding: '14px', borderRadius: '8px', fontSize: '15px', fontWeight: '600', marginTop: '12px' }}
+              >
+                {isCreating ? '회사 및 멤버 구성 생성 중...' : `회사 생성 및 ${selectedIds.length}명 초대 완료`}
+              </button>
+            </ApiHint>
           </form>
         )}
       </div>

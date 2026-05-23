@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import { getDocumentStatusLabel } from '../utils/permissions';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function Approvals() {
   const { currentUser } = useAuth();
@@ -167,12 +169,16 @@ export default function Approvals() {
                   style={{ width: '100%', minHeight: '64px', resize: 'vertical', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', fontFamily: 'var(--font-sans)' }}
                 />
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                  <button type="button" onClick={handleReject} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 800 }}>
-                    반려하고 재작업으로 전환
-                  </button>
-                  <button type="button" onClick={handleApprove} className="btn-primary" style={{ padding: '10px 16px' }}>
-                    승인 완료
-                  </button>
+                  <ApiHint hint={apiHints.rejectDocument}>
+                    <button type="button" onClick={handleReject} style={{ padding: '10px 16px', borderRadius: '8px', border: '1px solid #ef4444', color: '#ef4444', background: 'transparent', fontWeight: 800 }}>
+                      반려하고 재작업으로 전환
+                    </button>
+                  </ApiHint>
+                  <ApiHint hint={apiHints.approveDocument}>
+                    <button type="button" onClick={handleApprove} className="btn-primary" style={{ padding: '10px 16px' }}>
+                      승인 완료
+                    </button>
+                  </ApiHint>
                 </div>
               </>
             ) : (

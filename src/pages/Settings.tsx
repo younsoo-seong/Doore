@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
 import MemberSelector from '../components/MemberSelector';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 export default function Settings() {
   const { currentUser, currentCompany, setCurrentCompany } = useAuth();
@@ -189,14 +191,16 @@ export default function Settings() {
                   onDeselect={(id) => setSelectedInviteIds(prev => prev.filter(x => x !== id))}
                   placeholder="이름 또는 이메일로 멤버 검색..."
                 />
-                <button 
-                  onClick={handleInviteMembers}
-                  disabled={selectedInviteIds.length === 0 || isInviting}
-                  className="btn-primary"
-                  style={{ width: '100%', padding: '10px', marginTop: '12px', fontSize: '13px' }}
-                >
-                  {isInviting ? '멤버 추가 중...' : `선택된 ${selectedInviteIds.length}명 회사 멤버로 추가`}
-                </button>
+                <ApiHint hint={apiHints.inviteCompanyMember} align="left" fullWidth>
+                  <button
+                    onClick={handleInviteMembers}
+                    disabled={selectedInviteIds.length === 0 || isInviting}
+                    className="btn-primary"
+                    style={{ width: '100%', padding: '10px', marginTop: '12px', fontSize: '13px' }}
+                  >
+                    {isInviting ? '멤버 추가 중...' : `선택된 ${selectedInviteIds.length}명 회사 멤버로 추가`}
+                  </button>
+                </ApiHint>
               </div>
 
               {loadingMembers ? (
@@ -228,23 +232,25 @@ export default function Settings() {
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: idx < member.departments.length - 1 ? '6px' : '0' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{dept.name}</span>
                                 {dept.role && dept.id ? (
-                                  <select
-                                    value={dept.role}
-                                    onChange={(e) => handleDepartmentRoleChange(dept.id, member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
-                                    style={{
-                                      padding: '4px 8px',
-                                      borderRadius: '6px',
-                                      border: '1px solid var(--border-color)',
-                                      fontSize: '11px',
-                                      fontWeight: 700,
-                                      background: dept.role === 'TASK_MANAGER' ? '#ecfeff' : dept.role === 'LEADER' ? '#eff6ff' : '#f8fafc',
-                                      color: dept.role === 'TASK_MANAGER' ? '#0e7490' : dept.role === 'LEADER' ? '#1d4ed8' : '#475569'
-                                    }}
-                                  >
-                                    <option value="MEMBER">부서원</option>
-                                    <option value="TASK_MANAGER">Task 관리자</option>
-                                    <option value="LEADER">부서장</option>
-                                  </select>
+                                  <ApiHint hint={apiHints.updateDepartmentRole}>
+                                    <select
+                                      value={dept.role}
+                                      onChange={(e) => handleDepartmentRoleChange(dept.id, member.id, e.target.value as 'LEADER' | 'TASK_MANAGER' | 'MEMBER')}
+                                      style={{
+                                        padding: '4px 8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid var(--border-color)',
+                                        fontSize: '11px',
+                                        fontWeight: 700,
+                                        background: dept.role === 'TASK_MANAGER' ? '#ecfeff' : dept.role === 'LEADER' ? '#eff6ff' : '#f8fafc',
+                                        color: dept.role === 'TASK_MANAGER' ? '#0e7490' : dept.role === 'LEADER' ? '#1d4ed8' : '#475569'
+                                      }}
+                                    >
+                                      <option value="MEMBER">부서원</option>
+                                      <option value="TASK_MANAGER">Task 관리자</option>
+                                      <option value="LEADER">부서장</option>
+                                    </select>
+                                  </ApiHint>
                                 ) : (
                                   <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>부서 미배치</span>
                                 )}
@@ -252,16 +258,18 @@ export default function Settings() {
                             ))}
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>
-                            <select 
-                              value={member.role} 
-                              onChange={(e) => handleRoleChange(member.id, e.target.value as 'OWNER' | 'ADMIN' | 'MEMBER')}
-                              style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
-                              disabled={member.id === currentUser?.id}
-                            >
-                              <option value="OWNER">조직장</option>
-                              <option value="ADMIN">관리자</option>
-                              <option value="MEMBER">일반 멤버</option>
-                            </select>
+                            <ApiHint hint={apiHints.updateCompanyRole}>
+                              <select
+                                value={member.role}
+                                onChange={(e) => handleRoleChange(member.id, e.target.value as 'OWNER' | 'ADMIN' | 'MEMBER')}
+                                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
+                                disabled={member.id === currentUser?.id}
+                              >
+                                <option value="OWNER">조직장</option>
+                                <option value="ADMIN">관리자</option>
+                                <option value="MEMBER">일반 멤버</option>
+                              </select>
+                            </ApiHint>
                           </td>
                           <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                             <button 
