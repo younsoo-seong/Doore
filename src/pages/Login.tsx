@@ -7,7 +7,7 @@ import { apiHints } from '../utils/apiHints';
 import '../styles/Auth.css';
 
 const demoAccounts = [
-  { label: '조직장', email: 'admin@doore.com', description: '승인/반려, 조직 관리' },
+  { label: '조직장', email: 'admin@doore.com', description: '승인, 조직 관리' },
   { label: '부서장', email: 'leader@doore.com', description: '부서 배치, Task 분할' },
   { label: '부서원', email: 'member@doore.com', description: '내 Task 편집' },
 ];

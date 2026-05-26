@@ -84,6 +84,13 @@ export const apiHints = {
     event: 'TODO -> DOING -> DONE',
     result: 'DONE이 되면 Task가 읽기 전용으로 잠깁니다.',
   },
+  rejectTask: {
+    title: 'Task 반려',
+    api: 'PATCH /api/v1/tasks/{taskId}/reject',
+    erd: ['tasks', 'notifications'],
+    event: 'TASK_STATUS_CHANGED 알림 발생, DONE Task -> DOING 재오픈',
+    result: '부서장이 완료된 Task를 반려하면 담당 부서원이 다시 편집할 수 있습니다.',
+  },
   editTaskRealtime: {
     title: 'Task 실시간 편집',
     api: 'PUB /pub/tasks/{taskId}/edit',
@@ -104,13 +111,6 @@ export const apiHints = {
     erd: ['documents', 'notifications'],
     event: 'DOCUMENT_APPROVED 알림 발생',
     result: '문서가 APPROVED로 전환되고 최종본 추출이 가능합니다.',
-  },
-  rejectDocument: {
-    title: '문서 반려',
-    api: 'PATCH /api/v1/documents/{documentId}/reject',
-    erd: ['documents', 'tasks', 'notifications'],
-    event: 'DOCUMENT_REJECTED 알림 발생, DONE Task -> DOING 재오픈',
-    result: '문서 잠금이 해제되고 부서원 Task가 다시 편집 가능한 재작업 흐름으로 돌아갑니다.',
   },
   readNotification: {
     title: '알림 읽음 처리',

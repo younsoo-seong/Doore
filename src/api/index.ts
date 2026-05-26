@@ -5,6 +5,16 @@ import { emitDemoEvent } from '../utils/eventBus';
 // Simulate network delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const getDocumentCompanyId = (document: any) => {
+  const department = db.departments.find((d: any) => d.id === document.department_id);
+  return department?.company_id ?? null;
+};
+
+const getDocumentOwnerId = (document: any) => {
+  const companyId = getDocumentCompanyId(document);
+  return db.company_members.find((cm: any) => cm.company_id === companyId && cm.role === 'OWNER')?.user_id ?? null;
+};
+
 export const api = {
   // Authentication
   login: async (email: string, _password?: string): Promise<{ user: User; token: string }> => {
@@ -395,6 +405,46 @@ export const api = {
     return true;
   },
 
+  rejectTask: async (taskId: number, reviewerId: number, reason: string) => {
+    await delay(300);
+    const task = db.tasks.find((t: any) => t.id === taskId);
+    if (!task) throw new Error('Task를 찾을 수 없습니다.');
+    if (task.status !== 'DONE') throw new Error('완료된 Task만 반려할 수 있습니다.');
+    const document = db.documents.find((d: any) => d.id === task.document_id);
+    if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 반려할 수 있습니다.');
+
+    const now = new Date().toISOString();
+    task.status = 'DOING';
+    task.updated_at = now;
+
+    const assigneeIds = db.task_assignees
+      .filter((assignee: any) => assignee.task_id === taskId)
+      .map((assignee: any) => assignee.user_id);
+
+    assigneeIds.forEach((userId: number) => {
+      db.notifications.push({
+        id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+        user_id: userId,
+        type: 'TASK_STATUS_CHANGED',
+        message: `Task가 반려되어 다시 작업이 필요합니다: ${task.title}${reason ? ` (${reason})` : ''}`,
+        is_read: false,
+        created_at: now,
+      });
+    });
+
+    saveDB();
+    emitDemoEvent({
+      title: 'Task 반려 및 재작업 요청',
+      api: 'PATCH /api/v1/tasks/{taskId}/reject',
+      method: 'PATCH',
+      tables: ['tasks', 'notifications'],
+      summary: '부서장이 완료된 Task를 반려하고 DOING 상태로 되돌려 담당 부서원이 다시 편집할 수 있게 합니다.',
+      payload: `{ reviewer_id: ${reviewerId}, reason: "${reason}" }`,
+      result: `task_id=${taskId}, status=DOING`,
+    });
+    return task;
+  },
+
   updateTaskContent: async (taskId: number, title: string, content: string) => {
     await delay(250);
     const task = db.tasks.find((t: any) => t.id === taskId);
@@ -520,9 +570,7 @@ export const api = {
     
     doc.content = integratedContent.trim();
     doc.status = 'PENDING';
-    const dept = db.departments.find((d: any) => d.id === doc.department_id);
-    const owner = db.company_members.find((cm: any) => cm.company_id === dept?.company_id && cm.role === 'OWNER');
-    doc.approver_id = owner?.user_id || doc.approver_id;
+    doc.approver_id = getDocumentOwnerId(doc) || doc.approver_id;
     doc.updated_at = new Date().toISOString();
     if (doc.approver_id) {
       db.notifications.push({
@@ -549,7 +597,10 @@ export const api = {
 
   getApprovalDocuments: async (userId: number) => {
     await delay(300);
-    const approverDocs = db.documents.filter((d: any) => d.approver_id === userId || d.status === 'PENDING');
+    const approverDocs = db.documents.filter((d: any) => {
+      const ownerId = getDocumentOwnerId(d);
+      return ownerId === userId && (d.status === 'PENDING' || d.status === 'APPROVED');
+    });
     return {
       documents: approverDocs,
       tasks: [...db.tasks],
@@ -563,8 +614,10 @@ export const api = {
     const doc = db.documents.find((d: any) => d.id === documentId);
     if (!doc) throw new Error('문서를 찾을 수 없습니다.');
     if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 승인할 수 있습니다.');
+    const ownerId = getDocumentOwnerId(doc);
+    if (ownerId !== approverId) throw new Error('조직장만 승인할 수 있습니다.');
     doc.status = 'APPROVED';
-    doc.approver_id = approverId;
+    doc.approver_id = ownerId;
     doc.updated_at = new Date().toISOString();
     db.notifications.push({
       id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
@@ -587,40 +640,5 @@ export const api = {
     return doc;
   },
 
-  rejectDocument: async (documentId: number, approverId: number, reason: string) => {
-    await delay(400);
-    const doc = db.documents.find((d: any) => d.id === documentId);
-    if (!doc) throw new Error('문서를 찾을 수 없습니다.');
-    if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 반려할 수 있습니다.');
-    const now = new Date().toISOString();
-    const relatedTasks = db.tasks.filter((t: any) => t.document_id === documentId);
-    doc.status = 'WORKING';
-    doc.approver_id = approverId;
-    doc.updated_at = now;
-    relatedTasks.forEach((task: any) => {
-      if (task.status === 'DONE') {
-        task.status = 'DOING';
-        task.updated_at = now;
-      }
-    });
-    db.notifications.push({
-      id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
-      user_id: doc.created_by,
-      type: 'DOC_REJECTED',
-      message: `문서가 반려되었습니다: ${doc.title}${reason ? ` (${reason})` : ''}`,
-      is_read: false,
-      created_at: now,
-    });
-    saveDB();
-    emitDemoEvent({
-      title: '문서 반려',
-      api: 'PATCH /api/v1/documents/{documentId}/reject',
-      method: 'PATCH',
-      tables: ['documents', 'tasks', 'notifications'],
-      summary: '문서를 반려하고 하위 DONE Task를 DOING으로 되돌려 부서원이 다시 편집할 수 있게 합니다.',
-      payload: `{ reason: "${reason}" }`,
-      result: `document_id=${documentId}, status=WORKING, reopened_tasks=${relatedTasks.length}`,
-    });
-    return doc;
-  }
+  
 };

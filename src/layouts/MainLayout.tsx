@@ -10,7 +10,7 @@ import { apiHints } from '../utils/apiHints';
 import '../styles/Notification.css';
 
 const demoAccounts = [
-  { label: '조직장', email: 'admin@doore.com', name: '박재홍', role: '승인/반려, 조직 관리' },
+  { label: '조직장', email: 'admin@doore.com', name: '박재홍', role: '승인, 조직 관리' },
   { label: '부서장', email: 'leader@doore.com', name: '오승민', role: '부서 배치, 문서 생성, Task 분할' },
   { label: '부서원', email: 'member@doore.com', name: '정동재', role: '내 Task 편집' },
 ];
@@ -198,7 +198,7 @@ export default function MainLayout() {
                     onClick={(e) => { e.stopPropagation(); navigate('/settings'); setShowWorkspaceDropdown(false); }}
                     style={{padding: '12px 16px', color: 'var(--text-primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
                   >
-                    ⚙️ 회사 설정 및 관리
+                     회사 설정 및 관리
                   </div>
                   <div
                     onClick={(e) => { e.stopPropagation(); navigate('/create-company'); setShowWorkspaceDropdown(false); }}
@@ -217,16 +217,16 @@ export default function MainLayout() {
         </div>
         <nav className="sidebar-nav">
           <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end>
-            📊 대시보드
+             대시보드
           </NavLink>
           <NavLink to="/docs" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            📁 부서 문서함
+             부서 문서함
           </NavLink>
           <NavLink to="/tasks" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            📝 내 TASK
+             내 TASK
           </NavLink>
           <NavLink to="/approvals" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            ✅ 결재함
+             결재함
           </NavLink>
         </nav>
       </aside>
@@ -260,6 +260,7 @@ export default function MainLayout() {
               <button 
                 className="icon-button" 
                 onClick={() => setShowNotifications(!showNotifications)}
+                aria-label="알림"
               >
                 🔔
                 {unreadCount > 0 && <span className="notification-badge"></span>}

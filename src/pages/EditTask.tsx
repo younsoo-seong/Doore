@@ -121,8 +121,6 @@ export default function EditTask() {
     }
   };
 
-
-
   if (loading) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -195,7 +193,7 @@ export default function EditTask() {
           <div style={{ height: '20px', width: '1px', backgroundColor: 'var(--border-color)' }}></div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>📄 상위 문서: {documentInfo.title}</span>
+            <span style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}> 상위 문서: {documentInfo.title}</span>
             <span className={`doc-status ${documentInfo.status}`}>
               {documentInfo.status === 'WORKING' ? '작성 중' : documentInfo.status === 'PENDING' ? '결재 대기' : '승인됨'}
             </span>
@@ -267,7 +265,7 @@ export default function EditTask() {
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {/* Read-only Assignees Indicator */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '12px', borderRight: '1px solid var(--border-color)', paddingRight: '12px' }}>
-              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>👥 배정 담당자:</span>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}> 배정 담당자:</span>
               <div style={{ display: 'flex', gap: '4px' }}>
                 {selectedAssignees.map((uid) => {
                   const member = deptMembers.find(m => m.id === uid);

@@ -49,6 +49,12 @@ export default function Documents() {
   const [addTaskAssignees, setAddTaskAssignees] = useState<number[]>([]);
   const [addTaskDocId, setAddTaskDocId] = useState<number | null>(null);
 
+  // Completed Task rejection state
+  const [showRejectTaskModal, setShowRejectTaskModal] = useState(false);
+  const [rejectTaskId, setRejectTaskId] = useState<number | null>(null);
+  const [rejectTaskReason, setRejectTaskReason] = useState('');
+  const [isRejectingTask, setIsRejectingTask] = useState(false);
+
   useEffect(() => {
     async function loadDepts() {
       if (currentCompany) {
@@ -318,6 +324,55 @@ export default function Documents() {
     }
   };
 
+  const refreshViewingDocTasks = async (documentId: number) => {
+    const data = await api.getTasksData();
+    const docTasks = data.tasks.filter((t: any) => t.document_id === documentId);
+    setViewingDocTasks(docTasks);
+    setViewingDocAssignees(data.task_assignees || []);
+  };
+
+  const refreshActiveDepartmentDocs = async () => {
+    if (!activeDept) return;
+    const data = await api.getDocuments(activeDept.id);
+    setDocsData(data);
+  };
+
+  const openRejectTaskModal = () => {
+    const completedTasks = viewingDocTasks.filter((task: any) => task.status === 'DONE');
+    if (completedTasks.length === 0) {
+      alert('반려할 완료 Task가 없습니다.');
+      return;
+    }
+    setRejectTaskId(completedTasks[0].id);
+    setRejectTaskReason('');
+    setShowRejectTaskModal(true);
+  };
+
+  const submitRejectCompletedTask = async () => {
+    if (!viewingDoc || !currentUser || !canManageActiveDept || !rejectTaskId) return;
+
+    const task = viewingDocTasks.find((item: any) => item.id === rejectTaskId);
+    if (!task) return;
+
+    const ok = window.confirm(`"${task.title}" Task를 반려하시겠습니까?\n상태가 진행 중(DOING)으로 돌아가고 담당자가 다시 편집할 수 있습니다.`);
+    if (!ok) return;
+
+    setIsRejectingTask(true);
+    try {
+      await api.rejectTask(task.id, currentUser.id, rejectTaskReason.trim());
+      await refreshViewingDocTasks(viewingDoc.id);
+      await refreshActiveDepartmentDocs();
+      setShowRejectTaskModal(false);
+      setRejectTaskId(null);
+      setRejectTaskReason('');
+      alert('Task를 반려했습니다. 담당 부서원이 다시 작업할 수 있습니다.');
+    } catch (e: any) {
+      alert(e.message || 'Task 반려에 실패했습니다.');
+    } finally {
+      setIsRejectingTask(false);
+    }
+  };
+
   const handleInviteMembers = async () => {
     if (!activeDept || selectedInviteIds.length === 0) return;
     setIsInviting(true);
@@ -362,6 +417,7 @@ export default function Documents() {
   const handleOpenDocView = async (doc: any) => {
     setLoadingDocView(true);
     setViewingDoc(doc);
+    setShowRejectTaskModal(false);
     try {
       const data = await api.getTasksData();
       const docTasks = data.tasks.filter((t: any) => t.document_id === doc.id);
@@ -379,6 +435,12 @@ export default function Documents() {
     }
   };
 
+  const completedViewingDocTasks = viewingDocTasks.filter((task: any) => task.status === 'DONE');
+  const canRejectCompletedTaskFromDoc =
+    viewingDoc?.status === 'WORKING' &&
+    canManageActiveDept &&
+    completedViewingDocTasks.length > 0;
+
   if (loading && !departments.length) {
     return <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>부서 정보를 불러오는 중입니다...</div>;
   }
@@ -389,7 +451,7 @@ export default function Documents() {
       {/* Left Panel: Departments */}
       <div style={{ width: '250px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px', borderBottom: '1px solid var(--border-color)', fontWeight: '600' }}>
-          🏢 부서 목록
+           부서 목록
         </div>
         <div style={{ flexGrow: 1, overflowY: 'auto', padding: '8px 0' }}>
           {departments.map(dept => (
@@ -441,7 +503,7 @@ export default function Documents() {
                     fontSize: '13px'
                   }}
                 >
-                  ⚙️ 부서 관리
+                   부서 관리
                 </button>
                 <ApiHint hint={apiHints.createDocument}>
                   <button
@@ -526,14 +588,14 @@ export default function Documents() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '16px' }}>
               <div>
                 <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  🏢 {activeDept?.name} 문서 자료실
+                   {activeDept?.name} 문서 자료실
                 </span>
                 <h3 style={{ fontSize: '22px', fontWeight: '700', marginTop: '4px', color: 'var(--text-primary)' }}>
-                  📄 {viewingDoc.title}
+                   {viewingDoc.title}
                 </h3>
               </div>
               <span className={`doc-status ${viewingDoc.status}`} style={{ fontSize: '13px', padding: '6px 12px' }}>
-                {viewingDoc.status === 'WORKING' ? '작성 중' : viewingDoc.status === 'PENDING' ? '결재 대기' : '승인됨'}
+                {viewingDoc.status === 'WORKING' ? '작성 중' : viewingDoc.status === 'PENDING' ? '결재 대기' : viewingDoc.status === 'APPROVED' ? '승인됨' : '반려됨'}
               </span>
             </div>
 
@@ -559,7 +621,7 @@ export default function Documents() {
                   gap: '12px'
                 }}>
                   <div style={{ flex: '1 1 300px' }}>
-                    💡 본 문서는 소속 부서원들의 실시간 Task 기여분을 통합 및 병합한 최종 보고서입니다.
+                     본 문서는 소속 부서원들의 실시간 Task 기여분을 통합 및 병합한 최종 보고서입니다.
                   </div>
                   {viewingDoc.status === 'WORKING' && canManageActiveDept && (
                     <ApiHint hint={apiHints.createTask}>
@@ -571,7 +633,7 @@ export default function Documents() {
                         className="btn-primary"
                         style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
                       >
-                        ➕ Task 추가 발급
+                         Task 추가 발급
                       </button>
                     </ApiHint>
                   )}
@@ -602,7 +664,7 @@ export default function Documents() {
                             }}>
                               {task.status === 'DONE' ? '완료됨' : task.status === 'DOING' ? '진행중' : '대기중'}
                             </span>
-                            
+
                             {taskAssigneeIds.length > 0 ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                 {taskAssigneeIds.map((uid: number) => {
@@ -658,13 +720,37 @@ export default function Documents() {
             )}
 
             {/* Footer Buttons */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', flexWrap: 'wrap', gap: '10px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
               <button 
-                onClick={() => setViewingDoc(null)} 
+                onClick={() => {
+                  setViewingDoc(null);
+                  setShowRejectTaskModal(false);
+                }} 
                 style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
               >
                 닫기
               </button>
+
+              {canRejectCompletedTaskFromDoc && (
+                <ApiHint hint={apiHints.rejectTask}>
+                  <button
+                    type="button"
+                    onClick={openRejectTaskModal}
+                    style={{
+                      padding: '10px 20px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '700',
+                      backgroundColor: 'transparent',
+                      color: '#ef4444',
+                      border: '1px solid #ef4444',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    완료 Task 반려
+                  </button>
+                </ApiHint>
+              )}
               
               {/* Approval request request button */}
               {viewingDoc.status === 'WORKING' && canManageActiveDept && (
@@ -685,33 +771,11 @@ export default function Documents() {
                     onMouseOver={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
                   >
-                    🚀 문서로 통합 및 승인 요청
+                     문서로 통합 및 승인 요청
                   </button>
                 </ApiHint>
               )}
 
-              {/* Creator Exclusive Word Editor Route */}
-              {viewingDoc.status === 'WORKING' && canManageActiveDept && currentUser?.id === viewingDoc.created_by && (
-                <button 
-                  onClick={() => {
-                    setViewingDoc(null);
-                    navigate(`/edit-document/${viewingDoc.id}`);
-                  }}
-                  style={{ 
-                    padding: '10px 20px', 
-                    borderRadius: '8px', 
-                    fontSize: '13px', 
-                    fontWeight: '600',
-                    backgroundColor: '#0284c7',
-                    color: 'white',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  📝 워드 에디터로 전체 수정 (생성자 권한)
-                </button>
-              )}
-              
               {/* Navigate to tasks boards if editable */}
               {viewingDoc.status === 'WORKING' && (
                 <button 
@@ -722,11 +786,74 @@ export default function Documents() {
                   className="btn-primary"
                   style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
                 >
-                  업무 보드로 이동해 편집하기 📝
+                  업무 보드로 이동해 편집하기 
                 </button>
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {showRejectTaskModal && viewingDoc && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '440px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 18px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+              <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>완료 Task 반려</h3>
+              <p style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                반려하면 선택한 Task가 진행 중(DOING)으로 돌아가고 담당자가 다시 편집할 수 있습니다.
+              </p>
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
+              반려할 Task
+              <select
+                value={rejectTaskId ?? ''}
+                onChange={(event) => setRejectTaskId(Number(event.target.value))}
+                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '13px' }}
+              >
+                {completedViewingDocTasks.map((task: any) => (
+                  <option key={task.id} value={task.id}>
+                    {task.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
+              반려 사유
+              <textarea
+                value={rejectTaskReason}
+                onChange={(event) => setRejectTaskReason(event.target.value)}
+                placeholder="담당자에게 전달할 수정 요청 내용을 입력하세요."
+                style={{ minHeight: '96px', resize: 'vertical', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontSize: '13px' }}
+              />
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRejectTaskModal(false);
+                  setRejectTaskId(null);
+                  setRejectTaskReason('');
+                }}
+                disabled={isRejectingTask}
+                style={{ padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: isRejectingTask ? 'not-allowed' : 'pointer' }}
+              >
+                취소
+              </button>
+              <ApiHint hint={apiHints.rejectTask}>
+                <button
+                  type="button"
+                  onClick={submitRejectCompletedTask}
+                  disabled={isRejectingTask || !rejectTaskId}
+                  style={{ padding: '9px 14px', borderRadius: '8px', border: '1px solid #ef4444', background: '#ef4444', color: 'white', fontWeight: 800, cursor: isRejectingTask || !rejectTaskId ? 'not-allowed' : 'pointer', opacity: isRejectingTask || !rejectTaskId ? 0.6 : 1 }}
+                >
+                  {isRejectingTask ? '반려 처리 중...' : '반려 처리'}
+                </button>
+              </ApiHint>
+            </div>
           </div>
         </div>
       )}
@@ -873,7 +1000,7 @@ export default function Documents() {
             
             {/* Header */}
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '14px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}>📄 새 문서 및 초기 Task/담당자 일괄 개설</h3>
+              <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--text-primary)' }}> 새 문서 및 초기 Task/담당자 일괄 개설</h3>
               <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>부서 문서를 신규 개설함과 동시에, 하위 협업 Task 배정 및 당사자 지정을 원스톱으로 처리합니다.</p>
             </div>
 
@@ -1017,7 +1144,7 @@ export default function Documents() {
                   style={{ padding: '10px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600' }}
                   disabled={isCreatingDoc}
                 >
-                  {isCreatingDoc ? '개설 중...' : '개설 및 배정 완료 🚀'}
+                  {isCreatingDoc ? '개설 중...' : '개설 및 배정 완료 '}
                 </button>
               </ApiHint>
             </div>
@@ -1030,7 +1157,7 @@ export default function Documents() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '450px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>➕ 신규 Task 추가 발급</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task 추가 발급</h3>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>해당 문서에 소속될 새로운 협업 Task와 담당 기여 부서원을 다중 지정합니다.</p>
             </div>
 
@@ -1047,7 +1174,7 @@ export default function Documents() {
 
             <div>
               <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                👥 담당 기여 부서원 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
+                 담당 기여 부서원 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
               </label>
 
               {/* Assignees badges list */}
@@ -1120,7 +1247,7 @@ export default function Documents() {
                   className="btn-primary"
                   style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
                 >
-                  발급 완료 🚀
+                  발급 완료 
                 </button>
               </ApiHint>
             </div>

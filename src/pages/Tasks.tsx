@@ -190,7 +190,7 @@ export default function Tasks() {
                 >
                   <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 800 }}>{new Date(task.due_date).toLocaleDateString('ko-KR')}</div>
                   <div style={{ fontSize: '13px', fontWeight: 800 }}>{task.title}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc?.title}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', overflowWrap: 'anywhere', wordBreak: 'keep-all', lineHeight: 1.35 }}>{doc?.title}</div>
                 </button>
               );
             })}

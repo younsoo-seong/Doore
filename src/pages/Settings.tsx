@@ -123,7 +123,7 @@ export default function Settings() {
   if (!currentCompany) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon">🏢</div>
+        <div className="empty-state-icon"></div>
         <h3>선택된 회사가 없습니다</h3>
         <p>좌측 상단에서 회사를 선택하거나 새로 생성해주세요.</p>
       </div>
@@ -210,24 +210,24 @@ export default function Settings() {
                   <table className="docs-table">
                     <thead>
                       <tr>
-                        <th style={{ whiteSpace: 'nowrap' }}>이름</th>
-                        <th style={{ whiteSpace: 'nowrap' }}>이메일</th>
-                        <th style={{ whiteSpace: 'nowrap' }}>소속 부서 (부서 직급)</th>
-                        <th style={{ whiteSpace: 'nowrap' }}>회사 권한</th>
-                        <th style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>관리</th>
+                        <th>이름</th>
+                        <th>이메일</th>
+                        <th>소속 부서 (부서 직급)</th>
+                        <th>회사 권한</th>
+                        <th style={{ textAlign: 'right' }}>관리</th>
                       </tr>
                     </thead>
                     <tbody>
                       {members.map(member => (
                         <tr key={member.id}>
-                          <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                          <td style={{ fontWeight: 500 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                               <div className="avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{member.name.charAt(0)}</div>
                               {member.name}
                             </div>
                           </td>
-                          <td style={{ color: 'var(--text-secondary)', fontSize: '13px', whiteSpace: 'nowrap' }}>{member.email}</td>
-                          <td style={{ fontSize: '13px', whiteSpace: 'nowrap' }}>
+                          <td style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>{member.email}</td>
+                          <td style={{ fontSize: '13px' }}>
                             {member.departments.map((dept: any, idx: number) => (
                               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: idx < member.departments.length - 1 ? '6px' : '0' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--primary)' }}>{dept.name}</span>
@@ -256,7 +256,7 @@ export default function Settings() {
                               </div>
                             ))}
                           </td>
-                          <td style={{ whiteSpace: 'nowrap' }}>
+                          <td>
                             <ApiHint hint={apiHints.updateCompanyRole}>
                               <select
                                 value={member.role}
@@ -270,7 +270,7 @@ export default function Settings() {
                               </select>
                             </ApiHint>
                           </td>
-                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          <td style={{ textAlign: 'right' }}>
                             <button 
                               onClick={() => handleRemoveMember(member.id)}
                               disabled={member.id === currentUser?.id}

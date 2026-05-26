@@ -66,4 +66,10 @@ body {
 button {
   cursor: pointer;
   font-family: var(--font-sans);
+  max-width: 100%;
+  min-width: 0;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }

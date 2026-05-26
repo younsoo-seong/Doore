@@ -219,7 +219,7 @@ export default function EditDocument() {
           textAlign: 'center', 
           boxShadow: '0 10px 25px rgba(0,0,0,0.05)' 
         }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🚫</div>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}></div>
           <h2 style={{ fontSize: '20px', fontWeight: '700', color: '#ef4444', marginBottom: '12px' }}>생성자 전용 권한 가드 작동</h2>
           <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '24px' }}>
             죄송합니다. 현재 접속하신 문서는 다른 부서원이 생성한 문서입니다.<br/>
@@ -276,7 +276,7 @@ export default function EditDocument() {
           <div style={{ height: '16px', width: '1px', backgroundColor: '#cbd5e1' }}></div>
           
           <span style={{ fontSize: '13px', fontWeight: '700', color: '#0284c7', background: '#e0f2fe', padding: '4px 10px', borderRadius: '4px' }}>
-            ⚙️ 생성자 통합 편집 모드
+             생성자 통합 편집 모드
           </span>
         </div>
 
@@ -299,7 +299,7 @@ export default function EditDocument() {
               color: hasCover ? '#0369a1' : '#334155'
             }}
           >
-            📄 표지 페이지 {hasCover ? '비활성화' : '활성화'}
+             표지 페이지 {hasCover ? '비활성화' : '활성화'}
           </button>
 
           <button 
@@ -315,7 +315,7 @@ export default function EditDocument() {
               color: 'white'
             }}
           >
-            ➕ 새 단락(Task) 추가
+             새 단락(Task) 추가
           </button>
           
           <div style={{ height: '16px', width: '1px', backgroundColor: '#cbd5e1', margin: '0 4px' }}></div>
@@ -352,7 +352,7 @@ export default function EditDocument() {
           padding: '20px',
           overflowY: 'auto'
         }}>
-          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '14px' }}>📝 문서 구조 목차</h3>
+          <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '14px' }}> 문서 구조 목차</h3>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             
@@ -378,7 +378,7 @@ export default function EditDocument() {
                 opacity: hasCover ? 1 : 0.5
               }}
             >
-              <span style={{ fontWeight: '600' }}>📄 제목 표지 페이지</span>
+              <span style={{ fontWeight: '600' }}> 제목 표지 페이지</span>
               <span style={{ fontSize: '11px', color: '#64748b' }}>{hasCover ? '활성' : '비활성'}</span>
             </div>
 
@@ -409,9 +409,10 @@ export default function EditDocument() {
                     fontWeight: '600', 
                     color: '#334155', 
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
+                    whiteSpace: 'normal',
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'keep-all',
+                    lineHeight: 1.35
                   }}
                   title={task.title}
                 >
@@ -669,14 +670,14 @@ export default function EditDocument() {
                       transition: 'all 0.2s'
                     }}
                   >
-                    ➕ 본문 다음 단락(Task) 추가하기
+                     본문 다음 단락(Task) 추가하기
                   </button>
                 </div>
               )}
 
               {tasks.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '80px 0', color: '#94a3b8' }}>
-                  <div style={{ fontSize: '32px', marginBottom: '16px' }}>📄</div>
+                  <div style={{ fontSize: '32px', marginBottom: '16px' }}></div>
                   <h4 style={{ fontSize: '15px', fontWeight: '700', marginBottom: '8px' }}>비어 있는 워드 페이퍼</h4>
                   <p style={{ fontSize: '12px', marginBottom: '20px' }}>아래 버튼을 눌러 첫 번째 단락(Task)을 즉시 생성하세요.</p>
                   <button 
@@ -684,7 +685,7 @@ export default function EditDocument() {
                     className="btn-primary"
                     style={{ fontSize: '13px', padding: '8px 20px' }}
                   >
-                    ➕ 첫 단락(Task) 만들기
+                     첫 단락(Task) 만들기
                   </button>
                 </div>
               )}
@@ -700,7 +701,7 @@ export default function EditDocument() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '450px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>➕ 신규 Task(단락) 추가 발급</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task(단락) 추가 발급</h3>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>해당 문서에 소속될 새로운 협업 Task와 담당 기여 부서원을 다중 지정합니다.</p>
             </div>
 
@@ -717,7 +718,7 @@ export default function EditDocument() {
 
             <div>
               <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                👥 담당 기여 부서원 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
+                 담당 기여 부서원 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
               </label>
 
               {/* Assignees badges list */}
@@ -789,7 +790,7 @@ export default function EditDocument() {
                 className="btn-primary"
                 style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
               >
-                발급 완료 🚀
+                발급 완료 
               </button>
             </div>
           </div>
