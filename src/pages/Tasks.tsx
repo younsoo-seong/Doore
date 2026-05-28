@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { getTaskStatusLabel } from '../utils/permissions';
+import { canReviewTask, getTaskStatusLabel } from '../utils/permissions';
+import ApiHint from '../components/ApiHint';
+import { apiHints } from '../utils/apiHints';
 
 const columns = ['TODO', 'DOING', 'DONE'] as const;
 
@@ -13,22 +16,36 @@ export default function Tasks() {
   const [departments, setDepartments] = useState<any[]>([]);
   const [scope, setScope] = useState('MY');
   const [loading, setLoading] = useState(true);
+  const [processingTaskId, setProcessingTaskId] = useState<number | null>(null);
+
+  const loadBoardData = useCallback(async () => {
+    if (!currentCompany) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const depts = await api.getDepartments(currentCompany.id);
+      const result = await api.getTasksData();
+      setDepartments(depts);
+      setData(result);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentCompany]);
 
   useEffect(() => {
-    async function loadBoardData() {
-      if (!currentCompany) return;
-      setLoading(true);
-      try {
-        const depts = await api.getDepartments(currentCompany.id);
-        const result = await api.getTasksData();
-        setDepartments(depts);
-        setData(result);
-      } finally {
-        setLoading(false);
-      }
-    }
     loadBoardData();
-  }, [currentCompany]);
+  }, [loadBoardData]);
+
+  const getDepartmentRole = useCallback((departmentId?: number) => {
+    if (!departmentId || !currentUser || !data?.department_members) return null;
+    return data.department_members.find((member: any) => (
+      member.department_id === departmentId &&
+      member.user_id === currentUser.id
+    ))?.role ?? null;
+  }, [currentUser, data]);
 
   const filteredTasks = useMemo(() => {
     if (!data || !currentCompany) return [];
@@ -56,6 +73,39 @@ export default function Tasks() {
 
   const calendarTasks = [...filteredTasks].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
 
+  const handleApproveTask = async (event: MouseEvent, task: any) => {
+    event.stopPropagation();
+    if (!currentUser) return;
+
+    setProcessingTaskId(task.id);
+    try {
+      await api.approveTask(task.id, currentUser.id);
+      await loadBoardData();
+    } catch (e: any) {
+      alert(e.message || 'Task 승인에 실패했습니다.');
+    } finally {
+      setProcessingTaskId(null);
+    }
+  };
+
+  const handleRejectTask = async (event: MouseEvent, task: any) => {
+    event.stopPropagation();
+    if (!currentUser) return;
+
+    const reason = window.prompt('반려 사유를 입력하세요.', '반려');
+    if (reason === null) return;
+
+    setProcessingTaskId(task.id);
+    try {
+      await api.rejectTask(task.id, currentUser.id, reason);
+      await loadBoardData();
+    } catch (e: any) {
+      alert(e.message || 'Task 반려에 실패했습니다.');
+    } finally {
+      setProcessingTaskId(null);
+    }
+  };
+
   if (loading) {
     return <div style={{ padding: '40px', color: 'var(--text-muted)' }}>업무 보드를 불러오는 중...</div>;
   }
@@ -68,19 +118,34 @@ export default function Tasks() {
     const doc = data.documents.find((item: any) => item.id === task.document_id);
     const dept = departments.find((item) => item.id === doc?.department_id);
     const assigneeIds = data.task_assignees.filter((item: any) => item.task_id === task.id).map((item: any) => item.user_id);
+    const departmentRole = getDepartmentRole(doc?.department_id);
+    const canReview = canReviewTask({
+      documentStatus: doc?.status,
+      currentUserId: currentUser?.id,
+      assigneeIds,
+      departmentRole,
+    });
+    const canApprove = canReview && task.status !== 'DONE';
+    const canReject = canReview && task.status === 'DONE';
     const locked = task.status === 'DONE' || doc?.status === 'PENDING' || doc?.status === 'APPROVED';
+    const busy = processingTaskId === task.id;
 
     return (
-      <button
+      <div
         key={task.id}
-        type="button"
+        role="button"
+        tabIndex={0}
         onClick={() => navigate(`/edit-task/${task.id}`)}
+        onKeyDown={(event) => {
+          if (event.currentTarget !== event.target) return;
+          if (event.key === 'Enter' || event.key === ' ') navigate(`/edit-task/${task.id}`);
+        }}
         className="task-card"
         style={{
           textAlign: 'left',
           borderColor: locked ? '#cbd5e1' : 'var(--border-color)',
-          opacity: locked ? 0.78 : 1,
-          minHeight: '132px',
+          opacity: locked ? 0.86 : 1,
+          minHeight: '148px',
           width: '100%'
         }}
         title={locked ? '잠금된 Task입니다. 클릭하면 읽기 전용으로 확인합니다.' : 'Task 편집 화면으로 이동합니다.'}
@@ -91,20 +156,36 @@ export default function Tasks() {
         </div>
         <div className="task-title">{task.title}</div>
         <div className="task-doc-title">{doc?.title}</div>
-        <div className="task-footer">
+        <div className="task-footer" style={{ alignItems: 'flex-end', gap: '8px' }}>
           <span className="due-date">{new Date(task.due_date).toLocaleDateString('ko-KR')}</span>
-          <div className="assignees">
-            {assigneeIds.map((uid: number) => {
-              const user = data.users.find((item: any) => item.id === uid);
-              return user ? (
-                <div key={uid} className="assignee-avatar" title={user.name}>
-                  {user.name.charAt(0)}
-                </div>
-              ) : null;
-            })}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {canApprove && (
+              <ApiHint hint={apiHints.approveTask}>
+                <button
+                  type="button"
+                  onClick={(event) => handleApproveTask(event, task)}
+                  disabled={busy}
+                  style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #16a34a', background: '#16a34a', color: '#fff', fontSize: '11px', fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+                >
+                  승인
+                </button>
+              </ApiHint>
+            )}
+            {canReject && (
+              <ApiHint hint={apiHints.rejectTask}>
+                <button
+                  type="button"
+                  onClick={(event) => handleRejectTask(event, task)}
+                  disabled={busy}
+                  style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontSize: '11px', fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+                >
+                  반려
+                </button>
+              </ApiHint>
+            )}
           </div>
         </div>
-      </button>
+      </div>
     );
   };
 
@@ -114,7 +195,7 @@ export default function Tasks() {
         <div>
           <h2 style={{ fontSize: '18px', marginBottom: '4px' }}>Task 칸반 보드</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            부서원은 자신의 Task를, 부서장은 부서 전체 업무 흐름을 확인합니다.
+            내 Task 카드에서 바로 승인하거나, 완료된 Task를 반려해 진행 중으로 되돌릴 수 있습니다.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

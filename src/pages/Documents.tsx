@@ -6,6 +6,15 @@ import MemberSelector from '../components/MemberSelector';
 import { canManageTasks } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
+import RichTextContent from '../components/RichTextContent';
+
+const allDepartmentsOption = { id: 'ALL', name: '전체' };
+
+const sortTasksByOrder = (tasks: any[]) => [...tasks].sort((a: any, b: any) => {
+  const orderA = a.block_order ?? a.insertion_index ?? 0;
+  const orderB = b.block_order ?? b.insertion_index ?? 0;
+  return orderA - orderB || a.id - b.id;
+});
 
 export default function Documents() {
   const navigate = useNavigate();
@@ -17,6 +26,7 @@ export default function Documents() {
   const [loading, setLoading] = useState(true);
   const [currentDeptRole, setCurrentDeptRole] = useState<string | null>(null);
   const [currentCompanyRole, setCurrentCompanyRole] = useState<string | null>(null);
+  const [departmentRoleMap, setDepartmentRoleMap] = useState<Record<number, string | null>>({});
 
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
@@ -32,8 +42,6 @@ export default function Documents() {
   // Integrated Document View Modal State
   const [viewingDoc, setViewingDoc] = useState<any>(null);
   const [viewingDocTasks, setViewingDocTasks] = useState<any[]>([]);
-  const [viewingDocUsers, setViewingDocUsers] = useState<any[]>([]);
-  const [viewingDocAssignees, setViewingDocAssignees] = useState<any[]>([]);
   const [loadingDocView, setLoadingDocView] = useState(false);
 
   // New Document & Task/Assignee Creation Modal State
@@ -49,19 +57,17 @@ export default function Documents() {
   const [addTaskAssignees, setAddTaskAssignees] = useState<number[]>([]);
   const [addTaskDocId, setAddTaskDocId] = useState<number | null>(null);
 
-  // Completed Task rejection state
-  const [showRejectTaskModal, setShowRejectTaskModal] = useState(false);
-  const [rejectTaskId, setRejectTaskId] = useState<number | null>(null);
-  const [rejectTaskReason, setRejectTaskReason] = useState('');
-  const [isRejectingTask, setIsRejectingTask] = useState(false);
+  const isAllDepartments = activeDept?.id === 'ALL';
 
   useEffect(() => {
     async function loadDepts() {
       if (currentCompany) {
         const depts = await api.getDepartments(currentCompany.id);
         setDepartments(depts);
-        if (depts.length > 0) setActiveDept(depts[0]);
-        else setActiveDept(null);
+        setActiveDept(allDepartmentsOption);
+      } else {
+        setDepartments([]);
+        setActiveDept(null);
       }
       setLoading(false);
     }
@@ -70,26 +76,36 @@ export default function Documents() {
 
   useEffect(() => {
     async function loadDocs() {
-      if (activeDept) {
+      if (activeDept && currentCompany) {
         setLoading(true);
-        const data = await api.getDocuments(activeDept.id);
-        setDocsData(data);
+        const data = activeDept.id === 'ALL'
+          ? await api.getDocuments()
+          : await api.getDocuments(Number(activeDept.id));
+        if (activeDept.id === 'ALL') {
+          const companyDeptIds = departments.map((dept) => dept.id);
+          setDocsData({
+            ...data,
+            documents: data.documents.filter((doc: any) => companyDeptIds.includes(doc.department_id)),
+          });
+        } else {
+          setDocsData(data);
+        }
         setLoading(false);
       } else {
         setDocsData(null);
       }
     }
     loadDocs();
-  }, [activeDept]);
+  }, [activeDept, currentCompany, departments]);
 
   useEffect(() => {
     async function loadMyDepartmentRole() {
-      if (!activeDept || !currentUser) {
+      if (!activeDept || activeDept.id === 'ALL' || !currentUser) {
         setCurrentDeptRole(null);
         return;
       }
 
-      const members = await api.getDepartmentMembers(activeDept.id);
+      const members = await api.getDepartmentMembers(Number(activeDept.id));
       const me = members.find((member: any) => member.id === currentUser.id);
       setCurrentDeptRole(me?.role ?? null);
     }
@@ -111,9 +127,30 @@ export default function Documents() {
     loadMyCompanyRole();
   }, [currentCompany, currentUser]);
 
-  const canManageActiveDept = canManageTasks(currentDeptRole);
+  useEffect(() => {
+    async function loadDepartmentRoles() {
+      if (!currentCompany || !currentUser) {
+        setDepartmentRoleMap({});
+        return;
+      }
+
+      const depts = await api.getDepartments(currentCompany.id);
+      const entries = await Promise.all(depts.map(async (dept: any) => {
+        const members = await api.getDepartmentMembers(dept.id);
+        const me = members.find((member: any) => member.id === currentUser.id);
+        return [dept.id, me?.role ?? null] as const;
+      }));
+      setDepartmentRoleMap(Object.fromEntries(entries));
+    }
+
+    loadDepartmentRoles();
+  }, [currentCompany, currentUser]);
+
+  const getDepartmentRole = (departmentId?: number) => departmentId ? departmentRoleMap[departmentId] ?? null : null;
+  const canManageActiveDept = !isAllDepartments && canManageTasks(currentDeptRole);
   const canCreateDepartment = currentCompanyRole === 'OWNER';
-  const canManageDepartment = canCreateDepartment || canManageActiveDept;
+  const canManageDepartment = !isAllDepartments && (canCreateDepartment || canManageActiveDept);
+  const canManageViewingDoc = viewingDoc ? canManageTasks(getDepartmentRole(viewingDoc.department_id)) : false;
 
   const openSettings = async () => {
     if (!activeDept || !currentCompany) return;
@@ -124,7 +161,7 @@ export default function Documents() {
     setDeptName(activeDept.name);
     
     // 1. Fetch current department members
-    const members = await api.getDepartmentMembers(activeDept.id);
+    const members = await api.getDepartmentMembers(Number(activeDept.id));
     setDeptMembers(members);
     
     // 2. Fetch all company members to find invite candidates
@@ -140,13 +177,16 @@ export default function Documents() {
 
   // Open the New Document & Tasks Creation Modal
   const openCreateDocModal = async () => {
-    if (!activeDept) return;
+    if (!activeDept || isAllDepartments) {
+      alert('문서를 생성할 부서를 먼저 선택해 주세요.');
+      return;
+    }
     if (!canManageActiveDept) {
       alert('문서 생성과 Task 분할은 부서장만 가능합니다.');
       return;
     }
     try {
-      const members = await api.getDepartmentMembers(activeDept.id);
+      const members = await api.getDepartmentMembers(Number(activeDept.id));
       setDeptMembersForSelect(members);
       setNewDocTitle('');
       setInitialTasks([
@@ -213,7 +253,7 @@ export default function Documents() {
     setIsCreatingDoc(true);
     try {
       // 1. Create document
-      const newDoc = await api.createDocument(activeDept.id, newDocTitle, currentUser.id);
+      const newDoc = await api.createDocument(Number(activeDept.id), newDocTitle, currentUser.id);
 
       // 2. Create tasks with their assigned userIds array
       for (const taskRow of validTasks) {
@@ -224,7 +264,7 @@ export default function Documents() {
       setShowCreateDocModal(false);
 
       // Reload
-      const data = await api.getDocuments(activeDept.id);
+      const data = await api.getDocuments(Number(activeDept.id));
       setDocsData(data);
     } catch (e) {
       console.error(e);
@@ -235,13 +275,18 @@ export default function Documents() {
   };
 
   const openAddTaskModal = async (docId: number) => {
-    if (!activeDept) return;
-    if (!canManageActiveDept) {
-      alert('Task 발급은 부서장만 가능합니다.');
+    const targetDoc = viewingDoc?.id === docId
+      ? viewingDoc
+      : docsData?.documents.find((doc: any) => doc.id === docId);
+    if (!targetDoc) return;
+
+    const targetDeptRole = getDepartmentRole(targetDoc.department_id);
+    if (!canManageTasks(targetDeptRole)) {
+      alert('Task 추가 생성은 부서장만 가능합니다.');
       return;
     }
     try {
-      const members = await api.getDepartmentMembers(activeDept.id);
+      const members = await api.getDepartmentMembers(targetDoc.department_id);
       setDeptMembersForSelect(members);
       setAddTaskDocId(docId);
       setAddTaskTitle('');
@@ -280,16 +325,14 @@ export default function Documents() {
     }
     try {
       await api.createTask(addTaskDocId, addTaskTitle.trim(), addTaskAssignees);
-      alert('Task가 성공적으로 추가 발급되었습니다.');
+      alert('Task가 성공적으로 추가 생성되었습니다.');
       setShowAddTaskModal(false);
       
       // If currently viewing doc details modal, refresh the tasks list immediately
       if (viewingDoc && viewingDoc.id === addTaskDocId) {
-        const data = await api.getTasksData();
-        const docTasks = data.tasks.filter((t: any) => t.document_id === viewingDoc.id);
-        setViewingDocTasks(docTasks);
-        setViewingDocAssignees(data.task_assignees || []);
+        await refreshViewingDocTasks(viewingDoc.id);
       }
+      await refreshActiveDepartmentDocs();
     } catch (e) {
       console.error(e);
       alert('Task 추가 과정 중 오류가 발생했습니다.');
@@ -315,10 +358,7 @@ export default function Documents() {
       alert('승인 요청이 완료되었습니다.');
       
       // Reload document list
-      if (activeDept) {
-        const data = await api.getDocuments(activeDept.id);
-        setDocsData(data);
-      }
+      await refreshActiveDepartmentDocs();
     } catch (e: any) {
       alert(e.message || '승인 요청에 실패했습니다.');
     }
@@ -327,50 +367,60 @@ export default function Documents() {
   const refreshViewingDocTasks = async (documentId: number) => {
     const data = await api.getTasksData();
     const docTasks = data.tasks.filter((t: any) => t.document_id === documentId);
-    setViewingDocTasks(docTasks);
-    setViewingDocAssignees(data.task_assignees || []);
+    setViewingDocTasks(sortTasksByOrder(docTasks));
   };
 
   const refreshActiveDepartmentDocs = async () => {
-    if (!activeDept) return;
-    const data = await api.getDocuments(activeDept.id);
-    setDocsData(data);
-  };
-
-  const openRejectTaskModal = () => {
-    const completedTasks = viewingDocTasks.filter((task: any) => task.status === 'DONE');
-    if (completedTasks.length === 0) {
-      alert('반려할 완료 Task가 없습니다.');
-      return;
+    if (!activeDept || !currentCompany) return;
+    const data = activeDept.id === 'ALL'
+      ? await api.getDocuments()
+      : await api.getDocuments(Number(activeDept.id));
+    if (activeDept.id === 'ALL') {
+      const companyDeptIds = departments.map((dept) => dept.id);
+      setDocsData({
+        ...data,
+        documents: data.documents.filter((doc: any) => companyDeptIds.includes(doc.department_id)),
+      });
+    } else {
+      setDocsData(data);
     }
-    setRejectTaskId(completedTasks[0].id);
-    setRejectTaskReason('');
-    setShowRejectTaskModal(true);
   };
 
-  const submitRejectCompletedTask = async () => {
-    if (!viewingDoc || !currentUser || !canManageActiveDept || !rejectTaskId) return;
+  const handleMoveViewingTask = async (index: number, direction: 'UP' | 'DOWN') => {
+    if (!viewingDoc) return;
+    const targetIndex = direction === 'UP' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= viewingDocTasks.length) return;
 
-    const task = viewingDocTasks.find((item: any) => item.id === rejectTaskId);
-    if (!task) return;
+    const reordered = [...viewingDocTasks];
+    const current = reordered[index];
+    reordered[index] = reordered[targetIndex];
+    reordered[targetIndex] = current;
+    setViewingDocTasks(reordered);
 
-    const ok = window.confirm(`"${task.title}" Task를 반려하시겠습니까?\n상태가 진행 중(DOING)으로 돌아가고 담당자가 다시 편집할 수 있습니다.`);
-    if (!ok) return;
-
-    setIsRejectingTask(true);
     try {
-      await api.rejectTask(task.id, currentUser.id, rejectTaskReason.trim());
+      await api.reorderTasks(viewingDoc.id, reordered.map((task: any) => task.id));
       await refreshViewingDocTasks(viewingDoc.id);
-      await refreshActiveDepartmentDocs();
-      setShowRejectTaskModal(false);
-      setRejectTaskId(null);
-      setRejectTaskReason('');
-      alert('Task를 반려했습니다. 담당 부서원이 다시 작업할 수 있습니다.');
-    } catch (e: any) {
-      alert(e.message || 'Task 반려에 실패했습니다.');
-    } finally {
-      setIsRejectingTask(false);
+    } catch (e) {
+      console.error(e);
+      alert('Task 순서 변경에 실패했습니다.');
+      await refreshViewingDocTasks(viewingDoc.id);
     }
+  };
+
+  const handleOpenTaskBoard = async (task: any) => {
+    if (!viewingDoc) return;
+
+    if (task.status === 'DONE' && viewingDoc.status === 'WORKING' && currentUser) {
+      try {
+        await api.reopenTaskForEdit(task.id, currentUser.id);
+      } catch (e: any) {
+        alert(e.message || 'Task를 수정 가능 상태로 전환하지 못했습니다.');
+        return;
+      }
+    }
+
+    setViewingDoc(null);
+    navigate(`/edit-task/${task.id}`);
   };
 
   const handleInviteMembers = async () => {
@@ -379,12 +429,12 @@ export default function Documents() {
     try {
       for (const userId of selectedInviteIds) {
         const role = inviteRoles[userId] || 'MEMBER';
-        await api.addDepartmentMember(activeDept.id, userId, role);
+        await api.addDepartmentMember(Number(activeDept.id), userId, role);
       }
       alert(`${selectedInviteIds.length}명의 부서원을 정상적으로 추가했습니다.`);
       
       // Refresh modal data
-      const updatedMembers = await api.getDepartmentMembers(activeDept.id);
+      const updatedMembers = await api.getDepartmentMembers(Number(activeDept.id));
       setDeptMembers(updatedMembers);
       
       if (currentCompany) {
@@ -404,9 +454,9 @@ export default function Documents() {
   const handleUpdateDeptMemberRole = async (userId: number, newRole: 'LEADER' | 'TASK_MANAGER' | 'MEMBER') => {
     if (!activeDept) return;
     try {
-      await api.updateDepartmentMemberRole(activeDept.id, userId, newRole);
+      await api.updateDepartmentMemberRole(Number(activeDept.id), userId, newRole);
       // Refresh
-      const updated = await api.getDepartmentMembers(activeDept.id);
+      const updated = await api.getDepartmentMembers(Number(activeDept.id));
       setDeptMembers(updated);
     } catch (e) {
       console.error(e);
@@ -417,29 +467,16 @@ export default function Documents() {
   const handleOpenDocView = async (doc: any) => {
     setLoadingDocView(true);
     setViewingDoc(doc);
-    setShowRejectTaskModal(false);
     try {
       const data = await api.getTasksData();
       const docTasks = data.tasks.filter((t: any) => t.document_id === doc.id);
-      setViewingDocTasks(docTasks);
-      setViewingDocAssignees(data.task_assignees || []);
-      
-      if (currentCompany) {
-        const members = await api.getCompanyMembers(currentCompany.id);
-        setViewingDocUsers(members);
-      }
+      setViewingDocTasks(sortTasksByOrder(docTasks));
     } catch (e) {
       console.error("Failed to load integrated document view", e);
     } finally {
       setLoadingDocView(false);
     }
   };
-
-  const completedViewingDocTasks = viewingDocTasks.filter((task: any) => task.status === 'DONE');
-  const canRejectCompletedTaskFromDoc =
-    viewingDoc?.status === 'WORKING' &&
-    canManageActiveDept &&
-    completedViewingDocTasks.length > 0;
 
   if (loading && !departments.length) {
     return <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>부서 정보를 불러오는 중입니다...</div>;
@@ -454,6 +491,12 @@ export default function Documents() {
            부서 목록
         </div>
         <div style={{ flexGrow: 1, overflowY: 'auto', padding: '8px 0' }}>
+          <div
+            onClick={() => setActiveDept(allDepartmentsOption)}
+            style={{ padding: '12px 16px', cursor: 'pointer', backgroundColor: isAllDepartments ? 'var(--primary-light)' : 'transparent', borderLeft: isAllDepartments ? '3px solid var(--primary)' : '3px solid transparent', fontWeight: isAllDepartments ? '600' : '400' }}
+          >
+            전체
+          </div>
           {departments.map(dept => (
             <div 
               key={dept.id} 
@@ -532,9 +575,16 @@ export default function Documents() {
                 <tbody>
                   {docsData?.documents.map((doc: any) => {
                     const author = docsData.users.find((u: any) => u.id === doc.created_by);
+                    const docDept = departments.find((dept) => dept.id === doc.department_id);
+                    const canManageDocTasks = canManageTasks(getDepartmentRole(doc.department_id));
                     return (
                       <tr key={doc.id} onClick={() => handleOpenDocView(doc)} style={{ cursor: 'pointer' }}>
-                        <td style={{ fontWeight: 600 }}>{doc.title}</td>
+                        <td style={{ fontWeight: 600 }}>
+                          <div>{doc.title}</div>
+                          {isAllDepartments && (
+                            <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 700 }}>{docDept?.name ?? '부서 없음'}</div>
+                          )}
+                        </td>
                         <td>
                           <span className={`doc-status ${doc.status}`}>
                             {doc.status === 'WORKING' ? '작성 중' : doc.status === 'PENDING' ? '결재 대기' : doc.status === 'APPROVED' ? '승인됨' : '반려됨'}
@@ -549,11 +599,11 @@ export default function Documents() {
                         <td>{new Date(doc.updated_at).toLocaleDateString('ko-KR')}</td>
                         <td style={{ textAlign: 'right' }}>
                           <ApiHint hint={apiHints.createTask}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); openAddTaskModal(doc.id); }}
-                              disabled={!canManageActiveDept || doc.status !== 'WORKING'}
-                              style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: canManageActiveDept && doc.status === 'WORKING' ? 'pointer' : 'not-allowed', opacity: canManageActiveDept && doc.status === 'WORKING' ? 1 : 0.45 }}
-                            >
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openAddTaskModal(doc.id); }}
+                                disabled={!canManageDocTasks || doc.status !== 'WORKING'}
+                                style={{ padding: '4px 8px', fontSize: '12px', background: 'var(--bg-app)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: canManageDocTasks && doc.status === 'WORKING' ? 'pointer' : 'not-allowed', opacity: canManageDocTasks && doc.status === 'WORKING' ? 1 : 0.45 }}
+                              >
                               + Task 생성
                             </button>
                           </ApiHint>
@@ -623,7 +673,7 @@ export default function Documents() {
                   <div style={{ flex: '1 1 300px' }}>
                      본 문서는 소속 부서원들의 실시간 Task 기여분을 통합 및 병합한 최종 보고서입니다.
                   </div>
-                  {viewingDoc.status === 'WORKING' && canManageActiveDept && (
+                  {viewingDoc.status === 'WORKING' && canManageViewingDoc && (
                     <ApiHint hint={apiHints.createTask}>
                       <button
                         onClick={(e) => {
@@ -633,7 +683,7 @@ export default function Documents() {
                         className="btn-primary"
                         style={{ padding: '6px 12px', fontSize: '12px', borderRadius: '6px' }}
                       >
-                         Task 추가 발급
+                         Task 추가 생성
                       </button>
                     </ApiHint>
                   )}
@@ -641,52 +691,61 @@ export default function Documents() {
 
                 {/* Sub-tasks Loop (The Integrated Document View) */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginTop: '10px' }}>
-                  {viewingDocTasks.map((task: any, index: number) => {
-                    const taskAssigneeIds = viewingDocAssignees
-                      .filter((ta: any) => ta.task_id === task.id)
-                      .map((ta: any) => ta.user_id);
-                    return (
-                      <div key={task.id} style={{ borderBottom: index < viewingDocTasks.length - 1 ? '1px solid var(--border-color)' : 'none', paddingBottom: '20px' }}>
-                        
-                        {/* Task Title & Assignee Header */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                            {index + 1}. {task.title}
-                          </h4>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ 
-                              fontSize: '11px', 
-                              padding: '2px 8px', 
-                              borderRadius: '4px', 
-                              fontWeight: '700',
+                  {viewingDocTasks.map((task: any, index: number) => (
+                    <div key={task.id} style={{ border: '1px solid var(--border-color)', borderRadius: '10px', padding: '14px', background: 'white' }}>
+                      {/* Task Title Header */}
+                      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '14px', alignItems: 'start', marginBottom: '12px' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '7px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 800, color: 'var(--text-muted)' }}>Task {index + 1}</span>
+                            <span style={{
+                              fontSize: '11px',
+                              padding: '3px 8px',
+                              borderRadius: '999px',
+                              fontWeight: '800',
                               background: task.status === 'DONE' ? '#dcfce7' : task.status === 'DOING' ? '#fef3c7' : '#e2e8f0',
                               color: task.status === 'DONE' ? '#15803d' : task.status === 'DOING' ? '#b45309' : '#475569'
                             }}>
-                              {task.status === 'DONE' ? '완료됨' : task.status === 'DOING' ? '진행중' : '대기중'}
+                              {task.status === 'DONE' ? '완료' : task.status === 'DOING' ? '진행 중' : '할 일'}
                             </span>
-
-                            {taskAssigneeIds.length > 0 ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                {taskAssigneeIds.map((uid: number) => {
-                                  const user = viewingDocUsers.find((u: any) => u.id === uid);
-                                  if (!user) return null;
-                                  return (
-                                    <div 
-                                      key={uid} 
-                                      className="avatar" 
-                                      style={{ width: 22, height: 22, fontSize: 9, cursor: 'pointer' }}
-                                      title={user.name}
-                                    >
-                                      {user.name.charAt(0)}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>담당자 미지정</span>
-                            )}
                           </div>
+                          <h4 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>
+                            {task.title}
+                          </h4>
                         </div>
+
+                        <ApiHint hint={task.status === 'DONE' ? apiHints.reopenTask : apiHints.editTaskRealtime}>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTaskBoard(task)}
+                            style={{ padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--primary)', background: 'white', color: 'var(--primary)', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                          >
+                            업무 보드로 이동
+                          </button>
+                        </ApiHint>
+                      </div>
+
+                      {viewingDoc.status === 'WORKING' && canManageViewingDoc && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', marginBottom: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'var(--bg-app)' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginRight: '4px' }}>순서</span>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveViewingTask(index, 'UP')}
+                            disabled={index === 0}
+                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'white', fontSize: '11px', fontWeight: 700, cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.35 : 1 }}
+                          >
+                            위로
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveViewingTask(index, 'DOWN')}
+                            disabled={index === viewingDocTasks.length - 1}
+                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'white', fontSize: '11px', fontWeight: 700, cursor: index === viewingDocTasks.length - 1 ? 'not-allowed' : 'pointer', opacity: index === viewingDocTasks.length - 1 ? 0.35 : 1 }}
+                          >
+                            아래로
+                          </button>
+                        </div>
+                      )}
 
                         {/* Task Content Box */}
                         <div style={{ 
@@ -700,18 +759,18 @@ export default function Documents() {
                           whiteSpace: 'pre-wrap',
                           minHeight: '60px'
                         }}>
-                          {task.content ? task.content : (
-                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>작성된 내용이 없습니다.</span>
-                          )}
+                          <RichTextContent
+                            content={task.content}
+                            emptyStyle={{ color: 'var(--text-muted)', fontStyle: 'italic' }}
+                          />
                         </div>
 
                       </div>
-                    );
-                  })}
+                  ))}
 
                   {viewingDocTasks.length === 0 && (
                     <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '14px', fontStyle: 'italic' }}>
-                      연결된 하위 Task가 없습니다. 우측의 [+ Task 생성] 버튼을 통해 업무를 발급하세요.
+                      연결된 하위 Task가 없습니다. 우측의 [+ Task 생성] 버튼을 통해 업무를 생성하세요.
                     </div>
                   )}
                 </div>
@@ -724,36 +783,14 @@ export default function Documents() {
               <button 
                 onClick={() => {
                   setViewingDoc(null);
-                  setShowRejectTaskModal(false);
                 }} 
                 style={{ padding: '10px 20px', background: 'transparent', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}
               >
                 닫기
               </button>
 
-              {canRejectCompletedTaskFromDoc && (
-                <ApiHint hint={apiHints.rejectTask}>
-                  <button
-                    type="button"
-                    onClick={openRejectTaskModal}
-                    style={{
-                      padding: '10px 20px',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: '700',
-                      backgroundColor: 'transparent',
-                      color: '#ef4444',
-                      border: '1px solid #ef4444',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    완료 Task 반려
-                  </button>
-                </ApiHint>
-              )}
-              
               {/* Approval request request button */}
-              {viewingDoc.status === 'WORKING' && canManageActiveDept && (
+              {viewingDoc.status === 'WORKING' && canManageViewingDoc && (
                 <ApiHint hint={apiHints.requestApproval}>
                   <button
                     onClick={handleRequestDocApproval}
@@ -795,69 +832,6 @@ export default function Documents() {
         </div>
       )}
 
-      {showRejectTaskModal && viewingDoc && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,23,42,0.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '440px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 18px 40px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text-primary)' }}>완료 Task 반려</h3>
-              <p style={{ marginTop: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                반려하면 선택한 Task가 진행 중(DOING)으로 돌아가고 담당자가 다시 편집할 수 있습니다.
-              </p>
-            </div>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
-              반려할 Task
-              <select
-                value={rejectTaskId ?? ''}
-                onChange={(event) => setRejectTaskId(Number(event.target.value))}
-                style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '13px' }}
-              >
-                {completedViewingDocTasks.map((task: any) => (
-                  <option key={task.id} value={task.id}>
-                    {task.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', fontWeight: 700 }}>
-              반려 사유
-              <textarea
-                value={rejectTaskReason}
-                onChange={(event) => setRejectTaskReason(event.target.value)}
-                placeholder="담당자에게 전달할 수정 요청 내용을 입력하세요."
-                style={{ minHeight: '96px', resize: 'vertical', padding: '10px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontSize: '13px' }}
-              />
-            </label>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '14px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowRejectTaskModal(false);
-                  setRejectTaskId(null);
-                  setRejectTaskReason('');
-                }}
-                disabled={isRejectingTask}
-                style={{ padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', fontWeight: 700, cursor: isRejectingTask ? 'not-allowed' : 'pointer' }}
-              >
-                취소
-              </button>
-              <ApiHint hint={apiHints.rejectTask}>
-                <button
-                  type="button"
-                  onClick={submitRejectCompletedTask}
-                  disabled={isRejectingTask || !rejectTaskId}
-                  style={{ padding: '9px 14px', borderRadius: '8px', border: '1px solid #ef4444', background: '#ef4444', color: 'white', fontWeight: 800, cursor: isRejectingTask || !rejectTaskId ? 'not-allowed' : 'pointer', opacity: isRejectingTask || !rejectTaskId ? 0.6 : 1 }}
-                >
-                  {isRejectingTask ? '반려 처리 중...' : '반려 처리'}
-                </button>
-              </ApiHint>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Department Settings Modal */}
       {showSettings && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -875,7 +849,7 @@ export default function Documents() {
                 />
                 <button 
                   onClick={async () => {
-                    await api.updateDepartment(activeDept.id, deptName);
+                    await api.updateDepartment(Number(activeDept.id), deptName);
                     setDepartments(departments.map(d => d.id === activeDept.id ? { ...d, name: deptName } : d));
                     setActiveDept({ ...activeDept, name: deptName });
                     alert('부서 이름이 수정되었습니다.');
@@ -914,7 +888,7 @@ export default function Documents() {
                       <button 
                         onClick={async () => {
                           if (confirm(`${member.name} 님을 부서에서 제외하시겠습니까?`)) {
-                            await api.removeDepartmentMember(activeDept.id, member.id);
+                            await api.removeDepartmentMember(Number(activeDept.id), member.id);
                             // Refresh list
                             const updated = deptMembers.filter(m => m.id !== member.id);
                             setDeptMembers(updated);
@@ -1157,7 +1131,7 @@ export default function Documents() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '450px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task 추가 발급</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task 추가 생성</h3>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>해당 문서에 소속될 새로운 협업 Task와 담당 기여 부서원을 다중 지정합니다.</p>
             </div>
 
@@ -1247,7 +1221,7 @@ export default function Documents() {
                   className="btn-primary"
                   style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
                 >
-                  발급 완료 
+                  생성 완료 
                 </button>
               </ApiHint>
             </div>

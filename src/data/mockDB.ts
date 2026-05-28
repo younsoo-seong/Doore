@@ -91,6 +91,15 @@ export interface Comment {
   created_at: string;
 }
 
+export interface ChatMessage {
+  id: number;
+  company_id: number;
+  department_id: number | null;
+  sender_id: number;
+  content: string;
+  created_at: string;
+}
+
 // 4. 알림 도메인
 export interface Notification {
   id: number;
@@ -240,6 +249,25 @@ export const comments: Comment[] = [
   }
 ];
 
+export const chat_messages: ChatMessage[] = [
+  {
+    id: 10001,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 2,
+    content: 'ERD 설계 리뷰가 끝나면 API 명세 쪽도 같이 확인하겠습니다.',
+    created_at: '2026-05-09T15:00:00Z'
+  },
+  {
+    id: 10002,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 3,
+    content: '네, API 명세 초안 업데이트 후 공유하겠습니다.',
+    created_at: '2026-05-09T15:04:00Z'
+  }
+];
+
 export const notifications: Notification[] = [
   {
     id: 7001,
@@ -279,6 +307,7 @@ const defaultDB = {
   task_files,
   task_assignees,
   comments,
+  chat_messages,
   notifications
 };
 
@@ -331,6 +360,11 @@ function normalizeDB(database: any) {
 
   database.task_assignees?.forEach((assignee: TaskAssignee) => {
     assignee.assigned_at ||= '2026-05-09T09:00:00Z';
+  });
+
+  database.chat_messages ||= [...chat_messages];
+  database.chat_messages?.forEach((message: ChatMessage) => {
+    if (message.department_id === undefined) message.department_id = 101;
   });
 
   return database;

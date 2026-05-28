@@ -3,7 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
 import { api } from '../api';
-import type { Notification, Company } from '../data/mockDB';
+import type { Notification, Company, ChatMessage } from '../data/mockDB';
 import { companyRoleLabels, departmentRoleLabels } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
@@ -26,12 +26,20 @@ export default function MainLayout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showWorkspaceDropdown, setShowWorkspaceDropdown] = useState(false);
   const [showAccountSwitcher, setShowAccountSwitcher] = useState(false);
+  const [showMessenger, setShowMessenger] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatUsers, setChatUsers] = useState<any[]>([]);
+  const [chatDepartments, setChatDepartments] = useState<any[]>([]);
+  const [selectedChatDepartmentId, setSelectedChatDepartmentId] = useState<number | null>(null);
+  const [chatDraft, setChatDraft] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [activeTab, setActiveTab] = useState<'unread' | 'read'>('unread');
   const [roleSummary, setRoleSummary] = useState<{ companyRole?: string; departmentRole?: string }>({});
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const workspaceDropdownRef = useRef<HTMLDivElement>(null);
   const accountSwitcherRef = useRef<HTMLDivElement>(null);
+  const messengerRef = useRef<HTMLDivElement>(null);
 
   // Fetch notifications on mount
   useEffect(() => {
@@ -45,10 +53,29 @@ export default function MainLayout() {
         if (companies.length > 0 && !currentCompany) {
           setCurrentCompany(companies[0]);
         }
+
+        const targetCompany = currentCompany || companies[0];
+        if (targetCompany) {
+          const departments = await api.getDepartments(targetCompany.id);
+          setChatDepartments(departments);
+          const nextDepartmentId = selectedChatDepartmentId && departments.some((dept: any) => dept.id === selectedChatDepartmentId)
+            ? selectedChatDepartmentId
+            : departments[0]?.id ?? null;
+          setSelectedChatDepartmentId(nextDepartmentId);
+
+          const chatData = await api.getCompanyChatMessages(targetCompany.id, nextDepartmentId);
+          setChatMessages(chatData.messages);
+          setChatUsers(chatData.users);
+        } else {
+          setChatDepartments([]);
+          setSelectedChatDepartmentId(null);
+          setChatMessages([]);
+          setChatUsers([]);
+        }
       }
     }
     fetchInitialData();
-  }, [currentUser]);
+  }, [currentUser, currentCompany, setCurrentCompany]);
 
   useEffect(() => {
     async function fetchRoles() {
@@ -88,6 +115,9 @@ export default function MainLayout() {
       }
       if (accountSwitcherRef.current && !accountSwitcherRef.current.contains(event.target as Node)) {
         setShowAccountSwitcher(false);
+      }
+      if (messengerRef.current && !messengerRef.current.contains(event.target as Node)) {
+        setShowMessenger(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -132,6 +162,29 @@ export default function MainLayout() {
     if (currentUser) {
       await api.markAllAsRead(currentUser.id);
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+    }
+  };
+
+  const handleSelectChatDepartment = async (departmentId: number) => {
+    if (!currentCompany) return;
+    setSelectedChatDepartmentId(departmentId);
+    setChatDraft('');
+    const chatData = await api.getCompanyChatMessages(currentCompany.id, departmentId);
+    setChatMessages(chatData.messages);
+    setChatUsers(chatData.users);
+  };
+
+  const handleSendChatMessage = async () => {
+    if (!currentUser || !currentCompany || !selectedChatDepartmentId || !chatDraft.trim()) return;
+    setIsSendingMessage(true);
+    try {
+      const message = await api.sendCompanyChatMessage(currentCompany.id, currentUser.id, chatDraft, selectedChatDepartmentId);
+      setChatMessages(prev => [...prev, message]);
+      setChatDraft('');
+    } catch (e: any) {
+      alert(e.message || '메시지 전송에 실패했습니다.');
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -191,25 +244,24 @@ export default function MainLayout() {
                   {comp.name}
                 </div>
               ))}
-              {isOwner ? (
-                <>
-                  <div style={{borderTop: '1px solid var(--border-color)'}}></div>
+              <div style={{borderTop: '1px solid var(--border-color)'}}></div>
+              {isOwner && (
                   <div
                     onClick={(e) => { e.stopPropagation(); navigate('/settings'); setShowWorkspaceDropdown(false); }}
                     style={{padding: '12px 16px', color: 'var(--text-primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
                   >
                      회사 설정 및 관리
                   </div>
-                  <div
-                    onClick={(e) => { e.stopPropagation(); navigate('/create-company'); setShowWorkspaceDropdown(false); }}
-                    style={{padding: '10px 16px 16px', color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
-                  >
-                    + 새 회사 만들기
-                  </div>
-                </>
-              ) : (
-                <div style={{borderTop: '1px solid var(--border-color)', padding: '12px 16px', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700}}>
-                  조직 생성/관리는 조직장 권한이 필요합니다.
+              )}
+              <div
+                onClick={(e) => { e.stopPropagation(); navigate('/create-company'); setShowWorkspaceDropdown(false); }}
+                style={{padding: isOwner ? '10px 16px 16px' : '12px 16px', color: 'var(--primary)', fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'}}
+              >
+                + 새 회사 만들기
+              </div>
+              {!isOwner && (
+                <div style={{padding: '0 16px 14px', color: 'var(--text-muted)', fontSize: '12px', fontWeight: 700, lineHeight: 1.45}}>
+                  회사 생성은 모든 사용자가 할 수 있습니다. 회사 설정 관리는 조직장 권한이 필요합니다.
                 </div>
               )}
             </div>
@@ -255,6 +307,121 @@ export default function MainLayout() {
               </button>
             </ApiHint>
             
+            <div ref={messengerRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                onClick={() => setShowMessenger(!showMessenger)}
+                style={{
+                  border: '1px solid var(--border-color)',
+                  background: showMessenger ? 'var(--primary-light)' : 'transparent',
+                  borderRadius: '6px',
+                  padding: '6px 10px',
+                  color: showMessenger ? 'var(--primary)' : 'var(--text-secondary)',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  cursor: 'pointer'
+                }}
+              >
+                메신저
+              </button>
+
+              {showMessenger && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '38px',
+                    right: 0,
+                    zIndex: 2300,
+                    width: '360px',
+                    maxWidth: 'calc(100vw - 40px)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    background: 'var(--bg-card)',
+                    boxShadow: '0 16px 34px rgba(15, 23, 42, 0.18)',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                      <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>부서 메신저</strong>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 800 }}>{chatMessages.length}</span>
+                    </div>
+                    <select
+                      value={selectedChatDepartmentId ?? ''}
+                      onChange={(event) => handleSelectChatDepartment(Number(event.target.value))}
+                      disabled={chatDepartments.length === 0}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-app)', color: 'var(--text-primary)', fontSize: '12px', fontWeight: 700 }}
+                    >
+                      {chatDepartments.length === 0 ? (
+                        <option value="">부서 없음</option>
+                      ) : (
+                        chatDepartments.map((department: any) => (
+                          <option key={department.id} value={department.id}>
+                            {department.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <div style={{ height: '280px', overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg-app)' }}>
+                    {!selectedChatDepartmentId ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '56px 8px' }}>
+                        메신저 부서를 선택해 주세요.
+                      </div>
+                    ) : chatMessages.length === 0 ? (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '56px 8px' }}>
+                        메시지가 없습니다.
+                      </div>
+                    ) : (
+                      chatMessages.map((message) => {
+                        const sender = chatUsers.find((user: any) => user.id === message.sender_id);
+                        const mine = message.sender_id === currentUser?.id;
+                        return (
+                          <div key={message.id} style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
+                            <div style={{ maxWidth: '78%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start', gap: '3px' }}>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>{sender?.name ?? '알 수 없음'}</span>
+                              <div style={{ padding: '8px 10px', borderRadius: '8px', background: mine ? 'var(--primary)' : 'white', color: mine ? 'white' : 'var(--text-primary)', border: mine ? '1px solid var(--primary)' : '1px solid var(--border-color)', fontSize: '12px', lineHeight: 1.45, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'keep-all' }}>
+                                {message.content}
+                              </div>
+                              <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{new Date(message.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div style={{ borderTop: '1px solid var(--border-color)', padding: '10px', display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                    <textarea
+                      value={chatDraft}
+                      onChange={(event) => setChatDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' && !event.shiftKey) {
+                          event.preventDefault();
+                          handleSendChatMessage();
+                        }
+                      }}
+                      placeholder="메시지 입력"
+                      rows={2}
+                      style={{ flex: 1, resize: 'none', padding: '8px 10px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', fontFamily: 'inherit', background: 'var(--bg-app)', color: 'var(--text-primary)' }}
+                    />
+                    <ApiHint hint={apiHints.sendMessage}>
+                      <button
+                        type="button"
+                        onClick={handleSendChatMessage}
+                        disabled={isSendingMessage || !chatDraft.trim() || !currentCompany || !selectedChatDepartmentId}
+                        className="btn-primary"
+                        style={{ padding: '8px 12px', minHeight: '36px', fontSize: '12px', borderRadius: '8px' }}
+                      >
+                        전송
+                      </button>
+                    </ApiHint>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Notification Wrapper */}
             <div className="notification-wrapper" ref={dropdownRef}>
               <button 

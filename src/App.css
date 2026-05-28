@@ -623,6 +623,10 @@
   background-color: var(--bg-app);
 }
 
+.toolbar-btn:disabled {
+  opacity: 0.45;
+}
+
 .editor-canvas {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
@@ -658,7 +662,6 @@
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  animation: moveCursor 8s infinite alternate ease-in-out;
   z-index: 10;
 }
 
@@ -677,14 +680,23 @@
   border-radius: 0 4px 4px 4px;
   margin-left: 2px;
   margin-top: -2px;
+  white-space: nowrap;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.16);
 }
 
-@keyframes moveCursor {
-  0% { transform: translate(150px, 180px); }
-  25% { transform: translate(250px, 200px); }
-  50% { transform: translate(180px, 240px); }
-  75% { transform: translate(300px, 220px); }
-  100% { transform: translate(220px, 260px); }
+.cursor-ghost-text {
+  margin-left: 8px;
+  margin-top: -2px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.rich-task-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
 }
 
 .typing-indicator {

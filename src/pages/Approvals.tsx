@@ -4,6 +4,7 @@ import { api } from '../api';
 import { getDocumentStatusLabel, getTaskStatusLabel } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
+import RichTextContent from '../components/RichTextContent';
 
 export default function Approvals() {
   const { currentUser } = useAuth();
@@ -186,12 +187,19 @@ export default function Approvals() {
               </div>
               <div style={{ overflowY: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '18px', background: 'white', flexGrow: 1 }}>
                 {selectedDoc.content ? (
-                  <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-sans)', fontSize: '14px', lineHeight: 1.7 }}>{selectedDoc.content}</pre>
+                  <RichTextContent
+                    content={selectedDoc.content}
+                    style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', lineHeight: 1.7 }}
+                  />
                 ) : (
                   docTasks.map((task: any) => (
                     <article key={task.id} style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '14px', marginBottom: '14px' }}>
                       <h4 style={{ fontSize: '15px', marginBottom: '8px' }}>{task.title}</h4>
-                      <p style={{ fontSize: '14px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{task.content || '작성된 내용이 없습니다.'}</p>
+                      <RichTextContent
+                        content={task.content}
+                        style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}
+                        emptyStyle={{ fontSize: '14px', color: 'var(--text-muted)' }}
+                      />
                     </article>
                   ))
                 )}
@@ -209,9 +217,11 @@ export default function Approvals() {
                         {getTaskStatusLabel(task.status)}
                       </span>
                     </div>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
-                      {task.content || '작성된 내용이 없습니다.'}
-                    </p>
+                    <RichTextContent
+                      content={task.content}
+                      style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.45 }}
+                      emptyStyle={{ fontSize: '12px', color: 'var(--text-muted)' }}
+                    />
                   </div>
                 ))}
               </div>

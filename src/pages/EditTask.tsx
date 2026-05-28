@@ -1,17 +1,38 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
-import { canEditTask } from '../utils/permissions';
+import { canEditTask, canReviewTask, getTaskStatusLabel } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
+import { formatRichTextHtml } from '../components/RichTextContent';
+
+const cursorColors = ['#ec4899', '#2563eb', '#16a34a'];
+const cursorPath = [
+  { left: 0, top: 0 },
+  { left: 78, top: 8 },
+  { left: 152, top: 24 },
+  { left: 96, top: 58 },
+  { left: 214, top: 76 },
+  { left: 164, top: 112 },
+];
+const cursorActivities = ['문장 정리 중', '단락 수정 중', '내용 검토 중', '표현 다듬는 중'];
+const taskStatusOptions = ['TODO', 'DOING', 'DONE'] as const;
+const taskStatusColors = {
+  TODO: { background: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+  DOING: { background: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+  DONE: { background: '#dcfce7', color: '#15803d', border: '#86efac' },
+};
+type CursorSnapshot = { top: number; left: number; activity: string; step: number };
+type InlineFormatCommand = 'bold' | 'italic' | 'underline';
 
 export default function EditTask() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { isOffline } = useNetwork();
+  const contentRef = useRef<HTMLDivElement | null>(null);
   
   const [taskInfo, setTaskInfo] = useState<any>(null);
   const [documentInfo, setDocumentInfo] = useState<any>(null);
@@ -32,17 +53,20 @@ export default function EditTask() {
 
   // Simulated live peer typing
   const [simulatedTyping, setSimulatedTyping] = useState('');
+  const [cursorSnapshots, setCursorSnapshots] = useState<Record<number, CursorSnapshot>>({});
 
-  const peerCursorMember = useMemo(() => {
+  const collaboratorCursors = useMemo(() => {
     if (!currentUser) return null;
 
-    return (
-      deptMembers.find((member: any) => selectedAssignees.includes(member.id) && member.id !== currentUser.id) ||
-      deptMembers.find((member: any) => member.id !== currentUser.id && (member.role === 'LEADER' || member.role === 'TASK_MANAGER')) ||
-      deptMembers.find((member: any) => member.id !== currentUser.id) ||
-      null
-    );
+    const selectedMembers = deptMembers.filter((member: any) => selectedAssignees.includes(member.id) && member.id !== currentUser.id);
+    const managers = deptMembers.filter((member: any) => (
+      member.id !== currentUser.id &&
+      !selectedAssignees.includes(member.id) &&
+      (member.role === 'LEADER' || member.role === 'TASK_MANAGER')
+    ));
+    return [...selectedMembers, ...managers].slice(0, 3);
   }, [currentUser, deptMembers, selectedAssignees]);
+  const peerCursorMember = collaboratorCursors?.[0] ?? null;
 
   useEffect(() => {
     async function loadTaskDetails() {
@@ -77,6 +101,46 @@ export default function EditTask() {
   }, [taskId, navigate, currentUser]);
 
 
+  useEffect(() => {
+    const editor = contentRef.current;
+    if (!editor) return;
+    if (document.activeElement === editor) return;
+
+    const nextHtml = formatRichTextHtml(editContent);
+    if (editor.innerHTML !== nextHtml) {
+      editor.innerHTML = nextHtml;
+    }
+  }, [editContent, taskInfo?.id]);
+
+  useEffect(() => {
+    if (!documentInfo || !collaboratorCursors?.length || documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED') {
+      setCursorSnapshots({});
+      return;
+    }
+
+    const moveCursors = () => {
+      setCursorSnapshots((prev) => {
+        const next: Record<number, CursorSnapshot> = {};
+        collaboratorCursors.forEach((member: any, index: number) => {
+          const prior = prev[member.id];
+          const step = ((prior?.step ?? index) + 1) % cursorPath.length;
+          const path = cursorPath[step];
+          next[member.id] = {
+            top: 104 + index * 44 + path.top,
+            left: 148 + index * 34 + path.left,
+            activity: cursorActivities[(step + index) % cursorActivities.length],
+            step,
+          };
+        });
+        return next;
+      });
+    };
+
+    moveCursors();
+    const interval = window.setInterval(moveCursors, 1300);
+    return () => window.clearInterval(interval);
+  }, [documentInfo, collaboratorCursors]);
+
 
   // Simulated peer typing effect
   useEffect(() => {
@@ -85,9 +149,8 @@ export default function EditTask() {
     if (documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED') return;
 
     const interval = setInterval(() => {
-      setSimulatedTyping(prev => 
-        prev.length > 30 ? '' : prev + ` ${peerCursorMember.name}님이 입력 중...`
-      );
+      const activity = cursorActivities[Math.floor(Math.random() * cursorActivities.length)];
+      setSimulatedTyping(`${peerCursorMember.name}님이 ${activity}`);
     }, 4000);
     return () => clearInterval(interval);
   }, [documentInfo, peerCursorMember]);
@@ -105,6 +168,21 @@ export default function EditTask() {
     }
   };
 
+  const syncEditorContent = () => {
+    const editor = contentRef.current;
+    if (!editor) return;
+    const nextContent = editor.innerHTML === '<br>' ? '' : editor.innerHTML;
+    setEditContent(nextContent);
+    handleContentSave(editTitle, nextContent);
+  };
+
+  const applyInlineFormat = (command: InlineFormatCommand) => {
+    if (isReadOnly) return;
+    contentRef.current?.focus();
+    document.execCommand(command, false);
+    syncEditorContent();
+  };
+
   const handleStatusChange = async (newStatus: 'TODO' | 'DOING' | 'DONE') => {
     if (!taskInfo) return;
     if (!isEditable && taskStatus !== newStatus) {
@@ -118,6 +196,36 @@ export default function EditTask() {
 
     } catch (e) {
       alert('진행상태 변경에 실패했습니다.');
+    }
+  };
+
+  const handleApproveTask = async () => {
+    if (!taskInfo || !currentUser || !canReviewCurrentTask) return;
+    try {
+      const updatedTask = await api.approveTask(taskInfo.id, currentUser.id);
+      setTaskInfo({ ...updatedTask });
+      setTaskStatus('DONE');
+      alert('Task가 승인되어 완료 처리되었습니다.');
+    } catch (e: any) {
+      alert(e.message || 'Task 승인에 실패했습니다.');
+    }
+  };
+
+  const handleRejectTask = async () => {
+    if (!taskInfo || !currentUser || !canReviewCurrentTask) return;
+    const reason = window.prompt('반려 사유를 입력하세요.', '반려');
+    if (reason === null) return;
+    try {
+      const updatedTask = await api.rejectTask(taskInfo.id, currentUser.id, reason);
+      setTaskInfo({ ...updatedTask });
+      setTaskStatus('DOING');
+      setEditContent(updatedTask.content || '');
+      window.requestAnimationFrame(() => {
+        if (contentRef.current) contentRef.current.innerHTML = formatRichTextHtml(updatedTask.content || '');
+      });
+      alert('Task가 반려되어 진행 중 상태로 돌아갔습니다.');
+    } catch (e: any) {
+      alert(e.message || 'Task 반려에 실패했습니다.');
     }
   };
 
@@ -146,11 +254,15 @@ export default function EditTask() {
     isOffline,
   });
   const isReadOnly = !isEditable;
-  const lockReason = documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED'
-      ? '결재 잠금 상태의 문서입니다.'
-      : taskStatus === 'DONE'
-        ? '완료된 Task는 잠금 상태입니다.'
-        : '담당자 또는 부서장만 편집할 수 있습니다.';
+  const canReviewCurrentTask = canReviewTask({
+    documentStatus: documentInfo.status,
+    currentUserId: currentUser?.id,
+    assigneeIds: selectedAssignees,
+    departmentRole: myDeptRole,
+  });
+  const canApproveCurrentTask = canReviewCurrentTask && taskStatus !== 'DONE';
+  const canRejectCurrentTask = canReviewCurrentTask && taskStatus === 'DONE';
+  const lockReason = '현재 상태에서는 편집 권한이 없습니다. 담당자 또는 관리자에게 권한을 요청해 주세요.';
   const saveLabel = saveStatus === 'saved'
     ? isOffline ? '로컬 IndexedDB 저장 완료' : '동기화 완료'
     : saveStatus === 'saving'
@@ -200,6 +312,31 @@ export default function EditTask() {
           </div>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {canApproveCurrentTask && (
+            <ApiHint hint={apiHints.approveTask}>
+              <button
+                type="button"
+                onClick={handleApproveTask}
+                className="btn-primary"
+                style={{ padding: '8px 14px', minHeight: 0, fontSize: '13px' }}
+              >
+                승인
+              </button>
+            </ApiHint>
+          )}
+          {canRejectCurrentTask && (
+            <ApiHint hint={apiHints.rejectTask}>
+              <button
+                type="button"
+                onClick={handleRejectTask}
+                style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #ef4444', background: '#fff', color: '#ef4444', fontWeight: 800, cursor: 'pointer', fontSize: '13px' }}
+              >
+                반려
+              </button>
+            </ApiHint>
+          )}
+        </div>
       </div>
 
       {/* 2. Text Editor Canvas */}
@@ -241,25 +378,52 @@ export default function EditTask() {
         {/* Action Toolbar */}
         <div className="editor-toolbar" style={{ pointerEvents: isReadOnly ? 'none' : 'auto', opacity: isReadOnly ? 0.6 : 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
           <div className="toolbar-group">
-            <span style={{ fontSize: '13px', fontWeight: '600' }}>현재 상태:</span>
-            <ApiHint hint={apiHints.updateTaskStatus} align="left">
-              <select
-                value={taskStatus}
-                onChange={(e) => handleStatusChange(e.target.value as any)}
-                disabled={isReadOnly && taskStatus === 'DONE'}
-                style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', fontSize: '12px', backgroundColor: 'var(--bg-app)', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
-              >
-                <option value="TODO">할 일 (TODO)</option>
-                <option value="DOING">진행 중 (DOING)</option>
-                <option value="DONE">완료됨 (DONE)</option>
-              </select>
-            </ApiHint>
+            <span style={{ 
+              fontSize: '12px', 
+              color: saveColor, 
+              fontWeight: '600', 
+              padding: '4px 8px', 
+              background: saveBackground, 
+              borderRadius: '4px' 
+            }}>
+              {saveLabel}
+            </span>
           </div>
           
           <div className="toolbar-group">
-            <button className="toolbar-btn">B</button>
-            <button className="toolbar-btn">I</button>
-            <button className="toolbar-btn">U</button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              title="굵게"
+              disabled={isReadOnly}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyInlineFormat('bold')}
+              style={{ fontWeight: 800, cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
+            >
+              B
+            </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              title="기울임"
+              disabled={isReadOnly}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyInlineFormat('italic')}
+              style={{ fontStyle: 'italic', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
+            >
+              I
+            </button>
+            <button
+              type="button"
+              className="toolbar-btn"
+              title="밑줄"
+              disabled={isReadOnly}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => applyInlineFormat('underline')}
+              style={{ textDecoration: 'underline', cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
+            >
+              U
+            </button>
           </div>
 
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -283,16 +447,39 @@ export default function EditTask() {
               </div>
             </div>
 
-            <span style={{ 
-              fontSize: '12px', 
-              color: saveColor, 
-              fontWeight: '600', 
-              padding: '4px 8px', 
-              background: saveBackground, 
-              borderRadius: '4px' 
-            }}>
-              {saveLabel}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px 4px 10px', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--bg-app)' }}>
+              <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', lineHeight: 1, whiteSpace: 'nowrap' }}>상태</span>
+              <ApiHint hint={apiHints.updateTaskStatus} align="left">
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px', border: '1px solid #dbe3ee', borderRadius: '8px', background: 'white' }}>
+                  {taskStatusOptions.map((status) => {
+                    const active = taskStatus === status;
+                    const colors = taskStatusColors[status];
+                    return (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => handleStatusChange(status)}
+                        disabled={isReadOnly && taskStatus === 'DONE'}
+                        style={{
+                          minWidth: '72px',
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: `1px solid ${active ? colors.border : 'transparent'}`,
+                          background: active ? colors.background : 'transparent',
+                          color: active ? colors.color : 'var(--text-secondary)',
+                          fontSize: '12px',
+                          fontWeight: active ? 800 : 700,
+                          cursor: isReadOnly ? 'not-allowed' : 'pointer',
+                          opacity: isReadOnly && !active ? 0.45 : 1,
+                        }}
+                      >
+                        {getTaskStatusLabel(status)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </ApiHint>
+            </div>
           </div>
         </div>
 
@@ -306,13 +493,32 @@ export default function EditTask() {
                 서버 연결이 끊겨 변경사항을 로컬 IndexedDB에 임시 저장합니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
               </div>
             )}
-            {/* Simulated collaborative peer cursor */}
-            {!isReadOnly && peerCursorMember && (
-              <div className="mock-cursor" style={{ top: '160px', left: '260px' }}>
-                <div className="cursor-name">{peerCursorMember.name}</div>
-                <div className="cursor-pointer"></div>
-              </div>
-            )}
+            {/* Simulated collaborative peer cursors */}
+            {!isReadOnly && collaboratorCursors?.map((member: any, index: number) => {
+              const color = cursorColors[index % cursorColors.length];
+              const snapshot = cursorSnapshots[member.id] ?? {
+                top: 116 + index * 46,
+                left: 168 + index * 70,
+                activity: '편집 중',
+                step: 0,
+              };
+              return (
+                <div
+                  key={member.id}
+                  className="mock-cursor"
+                  style={{
+                    top: `${snapshot.top}px`,
+                    left: `${snapshot.left}px`,
+                    animation: 'none',
+                    transition: 'top 900ms cubic-bezier(0.22, 1, 0.36, 1), left 900ms cubic-bezier(0.22, 1, 0.36, 1)',
+                  }}
+                >
+                  <div className="cursor-name" style={{ backgroundColor: color }}>{member.name} · {snapshot.activity}</div>
+                  <div className="cursor-pointer" style={{ backgroundColor: color }}></div>
+                  <div className="cursor-ghost-text" style={{ color }}>{snapshot.activity}</div>
+                </div>
+              );
+            })}
 
             {/* Editable Task Title Input */}
             <ApiHint hint={apiHints.editTaskRealtime} align="left" fullWidth>
@@ -331,25 +537,30 @@ export default function EditTask() {
             </ApiHint>
 
             {/* Editable Task Content Area */}
-            <textarea
-              value={editContent}
-              onChange={(e) => {
-                setEditContent(e.target.value);
-                handleContentSave(editTitle, e.target.value);
-              }}
-              placeholder="업무에 대한 상세 내용이나 보고서를 작성하세요. 실시간으로 부서원들과 공유됩니다..."
-              readOnly={isReadOnly}
+            <div
+              ref={contentRef}
+              contentEditable={!isReadOnly}
+              suppressContentEditableWarning
+              role="textbox"
+              aria-multiline="true"
+              data-placeholder="업무에 대한 상세 내용이나 보고서를 작성하세요. 실시간으로 부서원들과 공유됩니다..."
+              className="rich-task-editor"
+              onInput={syncEditorContent}
+              onBlur={syncEditorContent}
               style={{ 
                 width: '100%', 
-                height: 'calc(100% - 100px)', 
+                minHeight: 'calc(100% - 100px)',
+                flexGrow: 1,
                 border: 'none', 
                 outline: 'none', 
-                resize: 'none', 
                 fontSize: '15px', 
                 lineHeight: '1.6', 
                 color: isReadOnly ? 'var(--text-secondary)' : 'var(--text-primary)',
                 fontFamily: 'inherit',
-                backgroundColor: 'transparent'
+                backgroundColor: 'transparent',
+                whiteSpace: 'pre-wrap',
+                overflowY: 'auto',
+                cursor: isReadOnly ? 'default' : 'text',
               }}
             />
 

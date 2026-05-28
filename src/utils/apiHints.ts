@@ -84,12 +84,26 @@ export const apiHints = {
     event: 'TODO -> DOING -> DONE',
     result: 'DONE이 되면 Task가 읽기 전용으로 잠깁니다.',
   },
+  approveTask: {
+    title: 'Task 승인',
+    api: 'PATCH /api/v1/tasks/{taskId}/approve',
+    erd: ['tasks', 'notifications'],
+    event: 'TASK_STATUS_CHANGED 알림 발생, Task -> DONE',
+    result: 'Task가 승인되어 완료 상태로 전환됩니다.',
+  },
   rejectTask: {
     title: 'Task 반려',
     api: 'PATCH /api/v1/tasks/{taskId}/reject',
     erd: ['tasks', 'notifications'],
     event: 'TASK_STATUS_CHANGED 알림 발생, DONE Task -> DOING 재오픈',
-    result: '부서장이 완료된 Task를 반려하면 담당 부서원이 다시 편집할 수 있습니다.',
+    result: '완료된 Task를 반려하면 담당자가 다시 편집할 수 있습니다.',
+  },
+  reopenTask: {
+    title: 'Task 수정 모드 전환',
+    api: 'PATCH /api/v1/tasks/{taskId}/reopen',
+    erd: ['tasks', 'notifications'],
+    event: 'TASK_STATUS_CHANGED 알림 발생, DONE Task -> DOING',
+    result: '업무 보드로 이동하기 전에 완료 Task를 다시 편집 가능한 상태로 전환합니다.',
   },
   editTaskRealtime: {
     title: 'Task 실시간 편집',
@@ -118,6 +132,13 @@ export const apiHints = {
     erd: ['notifications'],
     event: 'is_read=true',
     result: '알림 배지가 갱신됩니다.',
+  },
+  sendMessage: {
+    title: '메신저 메시지 전송',
+    api: 'POST /api/v1/companies/{companyId}/messages',
+    erd: ['chat_messages'],
+    event: '워크스페이스 메시지 저장 및 배포',
+    result: '회사 메신저 목록에 새 메시지가 표시됩니다.',
   },
   reconnectSync: {
     title: '네트워크 복구 동기화',

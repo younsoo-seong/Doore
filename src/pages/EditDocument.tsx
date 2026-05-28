@@ -701,7 +701,7 @@ export default function EditDocument() {
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ width: '450px', backgroundColor: 'var(--bg-card)', borderRadius: '12px', padding: '24px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task(단락) 추가 발급</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)' }}> 신규 Task(단락) 추가 생성</h3>
               <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>해당 문서에 소속될 새로운 협업 Task와 담당 기여 부서원을 다중 지정합니다.</p>
             </div>
 
@@ -790,7 +790,7 @@ export default function EditDocument() {
                 className="btn-primary"
                 style={{ padding: '8px 16px', borderRadius: '6px', fontSize: '12px' }}
               >
-                발급 완료 
+                생성 완료 
               </button>
             </div>
           </div>

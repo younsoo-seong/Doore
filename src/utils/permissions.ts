@@ -36,6 +36,18 @@ export function canEditTask(params: {
   return currentUserId ? assigneeIds.includes(currentUserId) : false;
 }
 
+export function canReviewTask(params: {
+  documentStatus?: string;
+  currentUserId?: number;
+  assigneeIds: number[];
+  departmentRole?: string | null;
+}) {
+  const { documentStatus, currentUserId, assigneeIds, departmentRole } = params;
+  if (documentStatus !== 'WORKING') return false;
+  if (canManageTasks(departmentRole)) return true;
+  return currentUserId ? assigneeIds.includes(currentUserId) : false;
+}
+
 export function getDocumentStatusLabel(status: string) {
   if (status === 'WORKING') return '작성 중';
   if (status === 'PENDING') return '결재 대기';
@@ -45,7 +57,7 @@ export function getDocumentStatusLabel(status: string) {
 }
 
 export function getTaskStatusLabel(status: string) {
-  if (status === 'TODO') return '시작 전';
+  if (status === 'TODO') return '할 일';
   if (status === 'DOING') return '진행 중';
   if (status === 'DONE') return '완료';
   return status;

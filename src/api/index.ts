@@ -46,6 +46,7 @@ export const api = {
       task_assignees: [...db.task_assignees],
       users: [...db.users],
       notifications: [...db.notifications],
+      chat_messages: [...(db.chat_messages || [])],
       department_members: [...db.department_members],
       companies: [...db.companies],
       departments: [...db.departments],
@@ -92,6 +93,51 @@ export const api = {
     });
     if (changed) saveDB();
     return true;
+  },
+
+  // Messenger
+  getCompanyChatMessages: async (companyId: number, departmentId?: number | null) => {
+    await delay(200);
+    const companyMessages = (db.chat_messages || [])
+      .filter((message: any) => (
+        message.company_id === companyId &&
+        (departmentId ? message.department_id === departmentId : true)
+      ))
+      .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    return {
+      messages: companyMessages,
+      users: [...db.users],
+    };
+  },
+
+  sendCompanyChatMessage: async (companyId: number, senderId: number, content: string, departmentId?: number | null) => {
+    await delay(180);
+    const trimmed = content.trim();
+    if (!trimmed) throw new Error('메시지를 입력해 주세요.');
+    if (!departmentId) throw new Error('메신저 부서를 선택해 주세요.');
+
+    db.chat_messages ||= [];
+    const now = new Date().toISOString();
+    const message = {
+      id: db.chat_messages.length > 0 ? Math.max(...db.chat_messages.map((item: any) => item.id)) + 1 : 1,
+      company_id: companyId,
+      department_id: departmentId,
+      sender_id: senderId,
+      content: trimmed,
+      created_at: now,
+    };
+    db.chat_messages.push(message);
+    saveDB();
+    emitDemoEvent({
+      title: '메신저 메시지 전송',
+      api: 'POST /api/v1/companies/{companyId}/messages',
+      method: 'POST',
+      tables: ['chat_messages'],
+      summary: '선택한 부서 메신저에 새 메시지를 저장하고 구독자에게 전달합니다.',
+      payload: `{ department_id: ${departmentId}, sender_id: ${senderId}, content: "${trimmed}" }`,
+      result: `message_id=${message.id}`,
+    });
+    return message;
   },
 
   // Company (Workspace) Management
@@ -405,6 +451,45 @@ export const api = {
     return true;
   },
 
+  approveTask: async (taskId: number, reviewerId: number) => {
+    await delay(250);
+    const task = db.tasks.find((t: any) => t.id === taskId);
+    if (!task) throw new Error('Task를 찾을 수 없습니다.');
+    const document = db.documents.find((d: any) => d.id === task.document_id);
+    if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 승인할 수 있습니다.');
+
+    const now = new Date().toISOString();
+    task.status = 'DONE';
+    task.updated_at = now;
+
+    const assigneeIds = db.task_assignees
+      .filter((assignee: any) => assignee.task_id === taskId)
+      .map((assignee: any) => assignee.user_id);
+
+    assigneeIds.forEach((userId: number) => {
+      db.notifications.push({
+        id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+        user_id: userId,
+        type: 'TASK_STATUS_CHANGED',
+        message: `Task가 승인되어 완료 처리되었습니다: ${task.title}`,
+        is_read: false,
+        created_at: now,
+      });
+    });
+
+    saveDB();
+    emitDemoEvent({
+      title: 'Task 승인 및 완료 처리',
+      api: 'PATCH /api/v1/tasks/{taskId}/approve',
+      method: 'PATCH',
+      tables: ['tasks', 'notifications'],
+      summary: 'Task를 DONE 상태로 전환하고 담당자에게 승인 완료 알림을 발송합니다.',
+      payload: `{ reviewer_id: ${reviewerId} }`,
+      result: `task_id=${taskId}, status=DONE`,
+    });
+    return task;
+  },
+
   rejectTask: async (taskId: number, reviewerId: number, reason: string) => {
     await delay(300);
     const task = db.tasks.find((t: any) => t.id === taskId);
@@ -415,6 +500,9 @@ export const api = {
 
     const now = new Date().toISOString();
     task.status = 'DOING';
+    task.content = reason.trim() ? `[반려]\n${reason.trim()}` : '[반려]';
+    task.rejected_at = now;
+    task.rejected_by = reviewerId;
     task.updated_at = now;
 
     const assigneeIds = db.task_assignees
@@ -438,8 +526,47 @@ export const api = {
       api: 'PATCH /api/v1/tasks/{taskId}/reject',
       method: 'PATCH',
       tables: ['tasks', 'notifications'],
-      summary: '부서장이 완료된 Task를 반려하고 DOING 상태로 되돌려 담당 부서원이 다시 편집할 수 있게 합니다.',
+      summary: '완료된 Task를 반려하고 DOING 상태로 되돌려 담당자가 다시 편집할 수 있게 합니다.',
       payload: `{ reviewer_id: ${reviewerId}, reason: "${reason}" }`,
+      result: `task_id=${taskId}, status=DOING`,
+    });
+    return task;
+  },
+
+  reopenTaskForEdit: async (taskId: number, reviewerId: number) => {
+    await delay(250);
+    const task = db.tasks.find((t: any) => t.id === taskId);
+    if (!task) throw new Error('Task를 찾을 수 없습니다.');
+    const document = db.documents.find((d: any) => d.id === task.document_id);
+    if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 수정 모드로 전환할 수 있습니다.');
+
+    const now = new Date().toISOString();
+    task.status = 'DOING';
+    task.updated_at = now;
+
+    const assigneeIds = db.task_assignees
+      .filter((assignee: any) => assignee.task_id === taskId)
+      .map((assignee: any) => assignee.user_id);
+
+    assigneeIds.forEach((userId: number) => {
+      db.notifications.push({
+        id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+        user_id: userId,
+        type: 'TASK_STATUS_CHANGED',
+        message: `Task가 수정 가능 상태로 전환되었습니다: ${task.title}`,
+        is_read: false,
+        created_at: now,
+      });
+    });
+
+    saveDB();
+    emitDemoEvent({
+      title: 'Task 수정 모드 전환',
+      api: 'PATCH /api/v1/tasks/{taskId}/reopen',
+      method: 'PATCH',
+      tables: ['tasks', 'notifications'],
+      summary: '완료된 Task를 DOING 상태로 되돌리고 담당자가 다시 편집할 수 있게 합니다.',
+      payload: `{ reviewer_id: ${reviewerId} }`,
       result: `task_id=${taskId}, status=DOING`,
     });
     return task;
@@ -536,16 +663,34 @@ export const api = {
     // Fetch doc tasks and other tasks
     const docTasks = db.tasks.filter((t: any) => t.document_id === documentId);
     const otherTasks = db.tasks.filter((t: any) => t.document_id !== documentId);
+    const now = new Date().toISOString();
     
     // Sort docTasks to match the order of taskIdsOrder
     const sortedDocTasks = [...docTasks].sort((a: any, b: any) => {
       const idxA = taskIdsOrder.indexOf(a.id);
       const idxB = taskIdsOrder.indexOf(b.id);
-      return idxA - idxB;
+      const safeIdxA = idxA === -1 ? Number.MAX_SAFE_INTEGER : idxA;
+      const safeIdxB = idxB === -1 ? Number.MAX_SAFE_INTEGER : idxB;
+      return safeIdxA - safeIdxB;
+    });
+
+    sortedDocTasks.forEach((task: any, index: number) => {
+      task.insertion_index = index;
+      task.block_order = index + 1;
+      task.updated_at = now;
     });
     
     db.tasks = [...otherTasks, ...sortedDocTasks];
     saveDB();
+    emitDemoEvent({
+      title: 'Task 순서 변경',
+      api: 'PATCH /api/v1/documents/{documentId}/tasks/order',
+      method: 'PATCH',
+      tables: ['tasks'],
+      summary: '문서에 포함된 Task 블록 순서를 재정렬합니다.',
+      payload: `{ task_ids: [${taskIdsOrder.join(', ')}] }`,
+      result: `document_id=${documentId}`,
+    });
     return true;
   },
 
