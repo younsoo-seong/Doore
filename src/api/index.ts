@@ -15,6 +15,18 @@ const getDocumentOwnerId = (document: any) => {
   return db.company_members.find((cm: any) => cm.company_id === companyId && cm.role === 'OWNER')?.user_id ?? null;
 };
 
+const isDepartmentTaskManager = (document: any, userId: number) => {
+  const member = db.department_members.find((dm: any) => (
+    dm.department_id === document.department_id &&
+    dm.user_id === userId
+  ));
+  return member?.role === 'LEADER' || member?.role === 'TASK_MANAGER';
+};
+
+const isTaskAssignee = (taskId: number, userId: number) => (
+  db.task_assignees.some((assignee: any) => assignee.task_id === taskId && assignee.user_id === userId)
+);
+
 export const api = {
   // Authentication
   login: async (email: string, _password?: string): Promise<{ user: User; token: string }> => {
@@ -101,7 +113,7 @@ export const api = {
     const companyMessages = (db.chat_messages || [])
       .filter((message: any) => (
         message.company_id === companyId &&
-        (departmentId ? message.department_id === departmentId : true)
+        (departmentId ? message.department_id === departmentId : false)
       ))
       .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return {
@@ -115,6 +127,11 @@ export const api = {
     const trimmed = content.trim();
     if (!trimmed) throw new Error('메시지를 입력해 주세요.');
     if (!departmentId) throw new Error('메신저 부서를 선택해 주세요.');
+    const departmentMember = db.department_members.find((member: any) => (
+      member.department_id === departmentId &&
+      member.user_id === senderId
+    ));
+    if (!departmentMember) throw new Error('소속 부서 메신저에만 메시지를 보낼 수 있습니다.');
 
     db.chat_messages ||= [];
     const now = new Date().toISOString();
@@ -457,6 +474,7 @@ export const api = {
     if (!task) throw new Error('Task를 찾을 수 없습니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
     if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 승인할 수 있습니다.');
+    if (!isDepartmentTaskManager(document, reviewerId)) throw new Error('Task 승인은 부서장만 할 수 있습니다.');
 
     const now = new Date().toISOString();
     task.status = 'DONE';
@@ -497,6 +515,7 @@ export const api = {
     if (task.status !== 'DONE') throw new Error('완료된 Task만 반려할 수 있습니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
     if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 반려할 수 있습니다.');
+    if (!isDepartmentTaskManager(document, reviewerId)) throw new Error('Task 반려는 부서장만 할 수 있습니다.');
 
     const now = new Date().toISOString();
     task.status = 'DOING';
@@ -539,6 +558,9 @@ export const api = {
     if (!task) throw new Error('Task를 찾을 수 없습니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
     if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 수정 모드로 전환할 수 있습니다.');
+    if (!isDepartmentTaskManager(document, reviewerId) && !isTaskAssignee(taskId, reviewerId)) {
+      throw new Error('Task 담당자 또는 부서장만 수정 모드로 전환할 수 있습니다.');
+    }
 
     const now = new Date().toISOString();
     task.status = 'DOING';

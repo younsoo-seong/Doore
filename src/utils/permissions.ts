@@ -38,14 +38,11 @@ export function canEditTask(params: {
 
 export function canReviewTask(params: {
   documentStatus?: string;
-  currentUserId?: number;
-  assigneeIds: number[];
   departmentRole?: string | null;
 }) {
-  const { documentStatus, currentUserId, assigneeIds, departmentRole } = params;
+  const { documentStatus, departmentRole } = params;
   if (documentStatus !== 'WORKING') return false;
-  if (canManageTasks(departmentRole)) return true;
-  return currentUserId ? assigneeIds.includes(currentUserId) : false;
+  return canManageTasks(departmentRole);
 }
 
 export function getDocumentStatusLabel(status: string) {

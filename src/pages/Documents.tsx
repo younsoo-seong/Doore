@@ -407,10 +407,10 @@ export default function Documents() {
     }
   };
 
-  const handleOpenTaskBoard = async (task: any) => {
+  const handleOpenTaskBoard = async (task: any, reopenForEdit = false) => {
     if (!viewingDoc) return;
 
-    if (task.status === 'DONE' && viewingDoc.status === 'WORKING' && currentUser) {
+    if (reopenForEdit && task.status === 'DONE' && viewingDoc.status === 'WORKING' && currentUser) {
       try {
         await api.reopenTaskForEdit(task.id, currentUser.id);
       } catch (e: any) {
@@ -714,38 +714,53 @@ export default function Documents() {
                           </h4>
                         </div>
 
-                        <ApiHint hint={task.status === 'DONE' ? apiHints.reopenTask : apiHints.editTaskRealtime}>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenTaskBoard(task)}
-                            style={{ padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--primary)', background: 'white', color: 'var(--primary)', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                          >
-                            업무 보드로 이동
-                          </button>
-                        </ApiHint>
-                      </div>
-
-                      {viewingDoc.status === 'WORKING' && canManageViewingDoc && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 10px', marginBottom: '12px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'var(--bg-app)' }}>
-                          <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--text-muted)', marginRight: '4px' }}>순서</span>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveViewingTask(index, 'UP')}
-                            disabled={index === 0}
-                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'white', fontSize: '11px', fontWeight: 700, cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.35 : 1 }}
-                          >
-                            위로
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveViewingTask(index, 'DOWN')}
-                            disabled={index === viewingDocTasks.length - 1}
-                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'white', fontSize: '11px', fontWeight: 700, cursor: index === viewingDocTasks.length - 1 ? 'not-allowed' : 'pointer', opacity: index === viewingDocTasks.length - 1 ? 0.35 : 1 }}
-                          >
-                            아래로
-                          </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
+                          {viewingDoc.status === 'WORKING' && canManageViewingDoc && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', padding: '2px', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--bg-app)' }} title="Task 순서 변경">
+                              <button
+                                type="button"
+                                aria-label={`${task.title} 위로 이동`}
+                                title="위로 이동"
+                                onClick={() => handleMoveViewingTask(index, 'UP')}
+                                disabled={index === 0}
+                                style={{ width: '26px', height: '26px', borderRadius: '6px', border: 0, background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 900, cursor: index === 0 ? 'not-allowed' : 'pointer', opacity: index === 0 ? 0.28 : 1, lineHeight: 1 }}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`${task.title} 아래로 이동`}
+                                title="아래로 이동"
+                                onClick={() => handleMoveViewingTask(index, 'DOWN')}
+                                disabled={index === viewingDocTasks.length - 1}
+                                style={{ width: '26px', height: '26px', borderRadius: '6px', border: 0, background: 'transparent', color: 'var(--text-secondary)', fontSize: '14px', fontWeight: 900, cursor: index === viewingDocTasks.length - 1 ? 'not-allowed' : 'pointer', opacity: index === viewingDocTasks.length - 1 ? 0.28 : 1, lineHeight: 1 }}
+                              >
+                                ↓
+                              </button>
+                            </div>
+                          )}
+                          <ApiHint hint={task.status === 'DONE' ? apiHints.reopenTask : apiHints.editTaskRealtime}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenTaskBoard(task)}
+                              style={{ padding: '7px 11px', borderRadius: '8px', border: '1px solid var(--primary)', background: 'white', color: 'var(--primary)', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                            >
+                              업무 보드로 이동
+                            </button>
+                          </ApiHint>
+                          {viewingDoc.status === 'WORKING' && canManageViewingDoc && task.status === 'DONE' && (
+                            <ApiHint hint={apiHints.reopenTask}>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenTaskBoard(task, true)}
+                                style={{ padding: '7px 11px', borderRadius: '8px', border: '1px solid #f59e0b', background: '#fffbeb', color: '#92400e', fontSize: '12px', fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                              >
+                                재작업
+                              </button>
+                            </ApiHint>
+                          )}
                         </div>
-                      )}
+                      </div>
 
                         {/* Task Content Box */}
                         <div style={{ 
@@ -1148,7 +1163,7 @@ export default function Documents() {
 
             <div>
               <label style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
-                 담당 기여 부서원 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
+                 담당자 지정 <span style={{ fontSize: '10px', fontWeight: 'normal', color: 'var(--text-muted)' }}>(1 ~ 5명)</span>
               </label>
 
               {/* Assignees badges list */}

@@ -143,6 +143,7 @@ export const department_members: DepartmentMember[] = [
   { department_id: 101, user_id: 1, role: 'MEMBER' }, // 박재홍 (실시간 조회)
   { department_id: 101, user_id: 2, role: 'LEADER' }, // 오승민
   { department_id: 101, user_id: 3, role: 'MEMBER' }, // 정동재
+  { department_id: 102, user_id: 2, role: 'LEADER' }, // 오승민
   { department_id: 102, user_id: 4, role: 'LEADER' }, // 박지훈
   { department_id: 102, user_id: 5, role: 'MEMBER' }  // 최유진
 ];
@@ -265,6 +266,22 @@ export const chat_messages: ChatMessage[] = [
     sender_id: 3,
     content: '네, API 명세 초안 업데이트 후 공유하겠습니다.',
     created_at: '2026-05-09T15:04:00Z'
+  },
+  {
+    id: 10003,
+    company_id: 1,
+    department_id: 102,
+    sender_id: 4,
+    content: '기획안 승인 요청 전에 핵심 기능 범위를 한 번 더 정리하겠습니다.',
+    created_at: '2026-05-09T15:12:00Z'
+  },
+  {
+    id: 10004,
+    company_id: 1,
+    department_id: 102,
+    sender_id: 5,
+    content: '사용자 시나리오 기준으로 우선순위 표를 업데이트해 두겠습니다.',
+    created_at: '2026-05-09T15:16:00Z'
   }
 ];
 
@@ -342,6 +359,13 @@ function normalizeDB(database: any) {
   const departmentLeader = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 2);
   if (departmentLeader) departmentLeader.role = 'LEADER';
 
+  const planningLeader = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 102 && dm.user_id === 2);
+  if (planningLeader) {
+    planningLeader.role = 'LEADER';
+  } else {
+    database.department_members?.push({ department_id: 102, user_id: 2, role: 'LEADER' });
+  }
+
   const departmentWorker = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 3);
   if (departmentWorker) departmentWorker.role = 'MEMBER';
 
@@ -365,6 +389,10 @@ function normalizeDB(database: any) {
   database.chat_messages ||= [...chat_messages];
   database.chat_messages?.forEach((message: ChatMessage) => {
     if (message.department_id === undefined) message.department_id = 101;
+  });
+  chat_messages.forEach((message) => {
+    const exists = database.chat_messages?.some((item: ChatMessage) => item.id === message.id);
+    if (!exists) database.chat_messages?.push({ ...message });
   });
 
   return database;

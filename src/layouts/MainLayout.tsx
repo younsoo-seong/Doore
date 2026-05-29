@@ -57,15 +57,21 @@ export default function MainLayout() {
         const targetCompany = currentCompany || companies[0];
         if (targetCompany) {
           const departments = await api.getDepartments(targetCompany.id);
-          setChatDepartments(departments);
-          const nextDepartmentId = selectedChatDepartmentId && departments.some((dept: any) => dept.id === selectedChatDepartmentId)
+          const departmentMembers = await Promise.all(
+            departments.map((department: any) => api.getDepartmentMembers(department.id))
+          );
+          const accessibleDepartments = departments.filter((_department: any, index: number) => (
+            departmentMembers[index].some((member: any) => member.id === currentUser.id)
+          ));
+          setChatDepartments(accessibleDepartments);
+          const nextDepartmentId = selectedChatDepartmentId && accessibleDepartments.some((dept: any) => dept.id === selectedChatDepartmentId)
             ? selectedChatDepartmentId
-            : departments[0]?.id ?? null;
+            : accessibleDepartments[0]?.id ?? null;
           setSelectedChatDepartmentId(nextDepartmentId);
-
-          const chatData = await api.getCompanyChatMessages(targetCompany.id, nextDepartmentId);
-          setChatMessages(chatData.messages);
-          setChatUsers(chatData.users);
+          if (!nextDepartmentId) {
+            setChatMessages([]);
+            setChatUsers([]);
+          }
         } else {
           setChatDepartments([]);
           setSelectedChatDepartmentId(null);
@@ -76,6 +82,22 @@ export default function MainLayout() {
     }
     fetchInitialData();
   }, [currentUser, currentCompany, setCurrentCompany]);
+
+  useEffect(() => {
+    async function fetchSelectedDepartmentMessages() {
+      if (!currentCompany || !selectedChatDepartmentId) {
+        setChatMessages([]);
+        setChatUsers([]);
+        return;
+      }
+
+      const chatData = await api.getCompanyChatMessages(currentCompany.id, selectedChatDepartmentId);
+      setChatMessages(chatData.messages);
+      setChatUsers(chatData.users);
+    }
+
+    fetchSelectedDepartmentMessages();
+  }, [currentCompany, selectedChatDepartmentId]);
 
   useEffect(() => {
     async function fetchRoles() {
@@ -166,12 +188,9 @@ export default function MainLayout() {
   };
 
   const handleSelectChatDepartment = async (departmentId: number) => {
-    if (!currentCompany) return;
+    if (!chatDepartments.some((department: any) => department.id === departmentId)) return;
     setSelectedChatDepartmentId(departmentId);
     setChatDraft('');
-    const chatData = await api.getCompanyChatMessages(currentCompany.id, departmentId);
-    setChatMessages(chatData.messages);
-    setChatUsers(chatData.users);
   };
 
   const handleSendChatMessage = async () => {

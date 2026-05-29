@@ -11,21 +11,56 @@ import { formatRichTextHtml } from '../components/RichTextContent';
 const cursorColors = ['#ec4899', '#2563eb', '#16a34a'];
 const cursorPath = [
   { left: 0, top: 0 },
-  { left: 78, top: 8 },
-  { left: 152, top: 24 },
-  { left: 96, top: 58 },
-  { left: 214, top: 76 },
-  { left: 164, top: 112 },
+  { left: 54, top: 1 },
+  { left: 112, top: 2 },
+  { left: 174, top: 2 },
+  { left: 238, top: 3 },
+  { left: 302, top: 5 },
+  { left: 42, top: 34 },
+  { left: 102, top: 35 },
+  { left: 166, top: 36 },
+  { left: 236, top: 37 },
+  { left: 304, top: 38 },
 ];
-const cursorActivities = ['문장 정리 중', '단락 수정 중', '내용 검토 중', '표현 다듬는 중'];
+const cursorActivities = ['문장 입력 중', '단락 이어 쓰는 중', '내용 검토 중', '표현 다듬는 중'];
+const taskDraftLibrary = {
+  erd: [
+    'users, documents, tasks 테이블의 관계를 기준으로 ERD를 정리합니다.',
+    'task_assignees는 다대다 배정 관계를 분리하기 위한 매핑 테이블로 둡니다.',
+    'notifications는 Task 상태 변경과 승인 요청 이벤트를 사용자별로 저장합니다.',
+  ],
+  api: [
+    'Task 생성 API는 documentId를 기준으로 하위 업무와 담당자 목록을 함께 저장합니다.',
+    '상태 변경 API는 TODO, DOING, DONE 값만 허용하고 문서 상태가 WORKING일 때만 처리합니다.',
+    '공동 편집 WebSocket은 taskId 채널을 구독해 변경 패치와 커서 위치를 전달합니다.',
+  ],
+  plan: [
+    '신규 서비스 기획안은 핵심 기능, 사용자 시나리오, 우선순위 기준으로 정리합니다.',
+    '요구사항은 필수 기능과 후순위 기능으로 나누어 승인자가 검토하기 쉽게 구성합니다.',
+    '정책 항목은 부서 검토 후 최종 승인 문서에 반영할 수 있도록 표 형태로 정리합니다.',
+  ],
+  default: [
+    'Task 요구사항을 기준으로 본문 초안을 정리하고 검토 의견을 반영합니다.',
+    '담당자별 작성 내용은 완료 후 문서 통합 단계에서 순서대로 병합됩니다.',
+    '수정이 필요한 부분은 반려 사유를 남긴 뒤 DOING 상태에서 다시 작업합니다.',
+  ],
+};
 const taskStatusOptions = ['TODO', 'DOING', 'DONE'] as const;
 const taskStatusColors = {
   TODO: { background: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
   DOING: { background: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
   DONE: { background: '#dcfce7', color: '#15803d', border: '#86efac' },
 };
-type CursorSnapshot = { top: number; left: number; activity: string; step: number };
+type CursorSnapshot = { top: number; left: number; activity: string; step: number; draft: string };
 type InlineFormatCommand = 'bold' | 'italic' | 'underline';
+
+const getPeerDraftSentences = (taskTitle = '', taskRequirement = '') => {
+  const source = `${taskTitle} ${taskRequirement}`.toLowerCase();
+  if (source.includes('erd') || source.includes('데이터베이스') || source.includes('테이블')) return taskDraftLibrary.erd;
+  if (source.includes('api') || source.includes('websocket') || source.includes('rest')) return taskDraftLibrary.api;
+  if (source.includes('기획') || source.includes('요구사항') || source.includes('서비스')) return taskDraftLibrary.plan;
+  return taskDraftLibrary.default;
+};
 
 export default function EditTask() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -61,12 +96,28 @@ export default function EditTask() {
     const selectedMembers = deptMembers.filter((member: any) => selectedAssignees.includes(member.id) && member.id !== currentUser.id);
     const managers = deptMembers.filter((member: any) => (
       member.id !== currentUser.id &&
+      member.name !== currentUser.name &&
       !selectedAssignees.includes(member.id) &&
       (member.role === 'LEADER' || member.role === 'TASK_MANAGER')
     ));
-    return [...selectedMembers, ...managers].slice(0, 3);
+    return [...selectedMembers, ...managers]
+      .filter((member: any) => member.id !== currentUser.id && member.name !== currentUser.name)
+      .slice(0, 3);
   }, [currentUser, deptMembers, selectedAssignees]);
   const peerCursorMember = collaboratorCursors?.[0] ?? null;
+  const peerDraftSentences = useMemo(
+    () => getPeerDraftSentences(taskInfo?.title, taskInfo?.requirement),
+    [taskInfo?.title, taskInfo?.requirement],
+  );
+  const remoteDrafts = useMemo(() => {
+    if (!collaboratorCursors?.length) return [];
+    return collaboratorCursors
+      .map((member: any, index: number) => ({
+        member,
+        draft: cursorSnapshots[member.id]?.draft || peerDraftSentences[index % peerDraftSentences.length],
+      }))
+      .filter((item: any) => item.draft.trim().length > 0);
+  }, [collaboratorCursors, cursorSnapshots, peerDraftSentences]);
 
   useEffect(() => {
     async function loadTaskDetails() {
@@ -125,11 +176,14 @@ export default function EditTask() {
           const prior = prev[member.id];
           const step = ((prior?.step ?? index) + 1) % cursorPath.length;
           const path = cursorPath[step];
+          const sentence = peerDraftSentences[index % peerDraftSentences.length];
+          const draftLength = Math.min(sentence.length, Math.max(6, (step + 1) * 5));
           next[member.id] = {
-            top: 104 + index * 44 + path.top,
-            left: 148 + index * 34 + path.left,
+            top: 118 + index * 72 + path.top,
+            left: 470 + index * 24 + path.left,
             activity: cursorActivities[(step + index) % cursorActivities.length],
             step,
+            draft: sentence.slice(0, draftLength),
           };
         });
         return next;
@@ -137,9 +191,9 @@ export default function EditTask() {
     };
 
     moveCursors();
-    const interval = window.setInterval(moveCursors, 1300);
+    const interval = window.setInterval(moveCursors, 2400);
     return () => window.clearInterval(interval);
-  }, [documentInfo, collaboratorCursors]);
+  }, [documentInfo, collaboratorCursors, peerDraftSentences]);
 
 
   // Simulated peer typing effect
@@ -151,7 +205,7 @@ export default function EditTask() {
     const interval = setInterval(() => {
       const activity = cursorActivities[Math.floor(Math.random() * cursorActivities.length)];
       setSimulatedTyping(`${peerCursorMember.name}님이 ${activity}`);
-    }, 4000);
+    }, 7000);
     return () => clearInterval(interval);
   }, [documentInfo, peerCursorMember]);
 
@@ -176,6 +230,27 @@ export default function EditTask() {
     handleContentSave(editTitle, nextContent);
   };
 
+  const mergeRemoteDraftsIntoContent = async () => {
+    if (!taskInfo || !isEditable || remoteDrafts.length === 0) return editContent;
+
+    const editor = contentRef.current;
+    const currentContent = editor
+      ? editor.innerHTML === '<br>' ? '' : editor.innerHTML
+      : editContent;
+    const mergedDrafts = remoteDrafts
+      .map(({ member, draft }: any) => `<p>${member.name}: ${draft}</p>`)
+      .filter((line: string) => !currentContent.includes(line))
+      .join('');
+
+    if (!mergedDrafts) return currentContent;
+
+    const mergedContent = `${mergedDrafts}${currentContent ? '<br>' : ''}${currentContent}`;
+    setEditContent(mergedContent);
+    if (editor) editor.innerHTML = formatRichTextHtml(mergedContent);
+    await api.updateTaskContent(taskInfo.id, editTitle, mergedContent);
+    return mergedContent;
+  };
+
   const applyInlineFormat = (command: InlineFormatCommand) => {
     if (isReadOnly) return;
     contentRef.current?.focus();
@@ -190,6 +265,9 @@ export default function EditTask() {
       return;
     }
     try {
+      if (newStatus === 'DONE') {
+        await mergeRemoteDraftsIntoContent();
+      }
       await api.updateTaskStatus(taskInfo.id, newStatus);
       setTaskStatus(newStatus);
       
@@ -202,6 +280,7 @@ export default function EditTask() {
   const handleApproveTask = async () => {
     if (!taskInfo || !currentUser || !canReviewCurrentTask) return;
     try {
+      await mergeRemoteDraftsIntoContent();
       const updatedTask = await api.approveTask(taskInfo.id, currentUser.id);
       setTaskInfo({ ...updatedTask });
       setTaskStatus('DONE');
@@ -256,13 +335,11 @@ export default function EditTask() {
   const isReadOnly = !isEditable;
   const canReviewCurrentTask = canReviewTask({
     documentStatus: documentInfo.status,
-    currentUserId: currentUser?.id,
-    assigneeIds: selectedAssignees,
     departmentRole: myDeptRole,
   });
   const canApproveCurrentTask = canReviewCurrentTask && taskStatus !== 'DONE';
   const canRejectCurrentTask = canReviewCurrentTask && taskStatus === 'DONE';
-  const lockReason = '현재 상태에서는 편집 권한이 없습니다. 담당자 또는 관리자에게 권한을 요청해 주세요.';
+  const lockReason = '읽기 전용 상태입니다. 수정이 필요하면 부서장에게 문의하십시오.';
   const saveLabel = saveStatus === 'saved'
     ? isOffline ? '로컬 IndexedDB 저장 완료' : '동기화 완료'
     : saveStatus === 'saving'
@@ -487,39 +564,12 @@ export default function EditTask() {
         <div style={{ display: 'flex', flexGrow: 1, overflow: 'hidden', minHeight: 0, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
           
           {/* Left Main: Editor Canvas */}
-          <div className="editor-canvas" style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div className="editor-canvas" style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
             {isOffline && (
               <div style={{ marginBottom: '16px', padding: '10px 12px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #facc15', color: '#92400e', fontSize: '13px', fontWeight: 700 }}>
                 서버 연결이 끊겨 변경사항을 로컬 IndexedDB에 임시 저장합니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
               </div>
             )}
-            {/* Simulated collaborative peer cursors */}
-            {!isReadOnly && collaboratorCursors?.map((member: any, index: number) => {
-              const color = cursorColors[index % cursorColors.length];
-              const snapshot = cursorSnapshots[member.id] ?? {
-                top: 116 + index * 46,
-                left: 168 + index * 70,
-                activity: '편집 중',
-                step: 0,
-              };
-              return (
-                <div
-                  key={member.id}
-                  className="mock-cursor"
-                  style={{
-                    top: `${snapshot.top}px`,
-                    left: `${snapshot.left}px`,
-                    animation: 'none',
-                    transition: 'top 900ms cubic-bezier(0.22, 1, 0.36, 1), left 900ms cubic-bezier(0.22, 1, 0.36, 1)',
-                  }}
-                >
-                  <div className="cursor-name" style={{ backgroundColor: color }}>{member.name} · {snapshot.activity}</div>
-                  <div className="cursor-pointer" style={{ backgroundColor: color }}></div>
-                  <div className="cursor-ghost-text" style={{ color }}>{snapshot.activity}</div>
-                </div>
-              );
-            })}
-
             {/* Editable Task Title Input */}
             <ApiHint hint={apiHints.editTaskRealtime} align="left" fullWidth>
               <input
@@ -535,6 +585,30 @@ export default function EditTask() {
                 style={{ width: '100%', fontSize: '24px', fontWeight: '700', border: 'none', outline: 'none', marginBottom: '20px', color: 'var(--text-primary)', backgroundColor: 'transparent' }}
               />
             </ApiHint>
+
+            {!isReadOnly && collaboratorCursors?.length ? (
+              <div className="remote-draft-stack" aria-label="다른 담당자 작성 중">
+                {collaboratorCursors.map((member: any, index: number) => {
+                  const color = cursorColors[index % cursorColors.length];
+                  const snapshot = cursorSnapshots[member.id] ?? {
+                    top: 0,
+                    left: 0,
+                    activity: '문장 입력 중',
+                    step: 0,
+                    draft: peerDraftSentences[index % peerDraftSentences.length].slice(0, 6),
+                  };
+                  return (
+                    <p key={member.id} className="remote-draft-line">
+                      <span>{snapshot.draft}</span>
+                      <span className="remote-caret" style={{ backgroundColor: color }}></span>
+                      <span className="remote-inline-label" style={{ backgroundColor: color }}>
+                        {member.name} · {snapshot.activity}
+                      </span>
+                    </p>
+                  );
+                })}
+              </div>
+            ) : null}
 
             {/* Editable Task Content Area */}
             <div

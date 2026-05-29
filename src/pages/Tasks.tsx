@@ -3,7 +3,7 @@ import type { MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
-import { canReviewTask, getTaskStatusLabel } from '../utils/permissions';
+import { canManageTasks, canReviewTask, getTaskStatusLabel } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
 
@@ -15,6 +15,7 @@ export default function Tasks() {
   const [data, setData] = useState<any>(null);
   const [departments, setDepartments] = useState<any[]>([]);
   const [scope, setScope] = useState('MY');
+  const [didSetDefaultScope, setDidSetDefaultScope] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processingTaskId, setProcessingTaskId] = useState<number | null>(null);
 
@@ -39,6 +40,11 @@ export default function Tasks() {
     loadBoardData();
   }, [loadBoardData]);
 
+  useEffect(() => {
+    setScope('MY');
+    setDidSetDefaultScope(false);
+  }, [currentUser?.id, currentCompany?.id]);
+
   const getDepartmentRole = useCallback((departmentId?: number) => {
     if (!departmentId || !currentUser || !data?.department_members) return null;
     return data.department_members.find((member: any) => (
@@ -46,6 +52,26 @@ export default function Tasks() {
       member.user_id === currentUser.id
     ))?.role ?? null;
   }, [currentUser, data]);
+
+  const managedDepartmentIds = useMemo(() => {
+    if (!currentUser || !data?.department_members) return [];
+    const companyDeptIds = new Set(departments.map((dept) => dept.id));
+    return data.department_members
+      .filter((member: any) => (
+        member.user_id === currentUser.id &&
+        companyDeptIds.has(member.department_id) &&
+        canManageTasks(member.role)
+      ))
+      .map((member: any) => member.department_id);
+  }, [currentUser, data, departments]);
+
+  useEffect(() => {
+    if (didSetDefaultScope || loading) return;
+    if (managedDepartmentIds.length > 0) {
+      setScope('MANAGED');
+    }
+    setDidSetDefaultScope(true);
+  }, [didSetDefaultScope, loading, managedDepartmentIds]);
 
   const filteredTasks = useMemo(() => {
     if (!data || !currentCompany) return [];
@@ -60,6 +86,11 @@ export default function Tasks() {
         .filter((assignee: any) => assignee.user_id === currentUser.id)
         .map((assignee: any) => assignee.task_id);
       tasks = tasks.filter((task: any) => myTaskIds.includes(task.id));
+    } else if (scope === 'MANAGED') {
+      const managedDocIds = data.documents
+        .filter((doc: any) => managedDepartmentIds.includes(doc.department_id))
+        .map((doc: any) => doc.id);
+      tasks = tasks.filter((task: any) => managedDocIds.includes(task.document_id));
     } else if (scope !== 'ALL') {
       const deptId = Number(scope);
       const deptDocIds = data.documents
@@ -69,7 +100,7 @@ export default function Tasks() {
     }
 
     return tasks;
-  }, [currentCompany, currentUser, data, departments, scope]);
+  }, [currentCompany, currentUser, data, departments, managedDepartmentIds, scope]);
 
   const calendarTasks = [...filteredTasks].sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
 
@@ -117,12 +148,9 @@ export default function Tasks() {
   const renderTaskCard = (task: any) => {
     const doc = data.documents.find((item: any) => item.id === task.document_id);
     const dept = departments.find((item) => item.id === doc?.department_id);
-    const assigneeIds = data.task_assignees.filter((item: any) => item.task_id === task.id).map((item: any) => item.user_id);
     const departmentRole = getDepartmentRole(doc?.department_id);
     const canReview = canReviewTask({
       documentStatus: doc?.status,
-      currentUserId: currentUser?.id,
-      assigneeIds,
       departmentRole,
     });
     const canApprove = canReview && task.status !== 'DONE';
@@ -195,17 +223,27 @@ export default function Tasks() {
         <div>
           <h2 style={{ fontSize: '18px', marginBottom: '4px' }}>Task 칸반 보드</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-            내 Task 카드에서 바로 승인하거나, 완료된 Task를 반려해 진행 중으로 되돌릴 수 있습니다.
+            부서장은 관리 중인 부서 Task를 검토하고, 개인 담당 업무는 별도로 확인할 수 있습니다.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          {managedDepartmentIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setScope('MANAGED')}
+              className={scope === 'MANAGED' ? 'btn-primary' : ''}
+              style={{ padding: '8px 12px', borderRadius: '8px', border: scope === 'MANAGED' ? 'none' : '1px solid var(--border-color)', background: scope === 'MANAGED' ? undefined : 'var(--bg-card)', fontWeight: 700 }}
+            >
+              관리 Task
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setScope('MY')}
             className={scope === 'MY' ? 'btn-primary' : ''}
             style={{ padding: '8px 12px', borderRadius: '8px', border: scope === 'MY' ? 'none' : '1px solid var(--border-color)', background: scope === 'MY' ? undefined : 'var(--bg-card)', fontWeight: 700 }}
           >
-            내 Task
+            내 담당 Task
           </button>
           <button
             type="button"
@@ -216,7 +254,7 @@ export default function Tasks() {
             전체
           </button>
           <select
-            value={scope === 'MY' || scope === 'ALL' ? '' : scope}
+            value={scope === 'MY' || scope === 'ALL' || scope === 'MANAGED' ? '' : scope}
             onChange={(event) => setScope(event.target.value || 'ALL')}
             style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: 700 }}
           >
