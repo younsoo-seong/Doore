@@ -628,8 +628,8 @@ export default function EditTask() {
         )}
 
         {/* Action Toolbar */}
-        <div className="editor-toolbar" style={{ pointerEvents: 'auto', opacity: isReadOnly ? 0.6 : 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
-          <div className="toolbar-group">
+        <div className="editor-toolbar" style={{ pointerEvents: 'auto', opacity: 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
+          <div className="toolbar-group" style={{ opacity: isReadOnly ? 0.6 : 1 }}>
             <span style={{ 
               fontSize: '12px', 
               color: saveColor, 
@@ -642,7 +642,7 @@ export default function EditTask() {
             </span>
           </div>
           
-          <div className="toolbar-group">
+          <div className="toolbar-group" style={{ opacity: isReadOnly ? 0.45 : 1 }}>
             <button
               type="button"
               className="toolbar-btn"
@@ -701,16 +701,19 @@ export default function EditTask() {
                 <button
                   type="button"
                   onClick={openAssigneeEditor}
+                  title="Task 담당자를 변경합니다"
                   style={{
-                    padding: '5px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--border-color)',
-                    background: 'white',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--primary)',
+                    background: 'var(--primary-light)',
                     color: 'var(--primary)',
-                    fontSize: '11px',
+                    fontSize: '12px',
                     fontWeight: 800,
                     cursor: 'pointer',
-                    whiteSpace: 'nowrap'
+                    whiteSpace: 'nowrap',
+                    opacity: 1,
+                    boxShadow: '0 1px 2px rgba(37, 99, 235, 0.12)'
                   }}
                 >
                   담당자 변경
