@@ -65,6 +65,29 @@ export default function Documents() {
 
   const isAllDepartments = activeDept?.id === 'ALL';
 
+  const loadAssignableDepartmentMembers = async (departmentId: number) => {
+    if (!currentCompany) return [];
+
+    const [members, companyMemberList] = await Promise.all([
+      api.getDepartmentMembers(departmentId),
+      api.getCompanyMembers(currentCompany.id),
+    ]);
+    const ownerIds = new Set(
+      companyMemberList
+        .filter((member: any) => member.role === 'OWNER')
+        .map((member: any) => member.id)
+    );
+
+    return members.filter((member: any) => !ownerIds.has(member.id));
+  };
+
+  const getDefaultAssigneeIds = (members: any[]) => {
+    if (currentUser && members.some((member: any) => member.id === currentUser.id)) {
+      return [currentUser.id];
+    }
+    return members[0] ? [members[0].id] : [];
+  };
+
   useEffect(() => {
     async function loadDepts() {
       if (currentCompany) {
@@ -173,7 +196,10 @@ export default function Documents() {
     // 2. Fetch all company members to find invite candidates
     const allCompanyMembers = await api.getCompanyMembers(currentCompany.id);
     const currentMemberIds = members.map((m: any) => m.id);
-    const candidates = allCompanyMembers.filter((m: any) => !currentMemberIds.includes(m.id));
+    const candidates = allCompanyMembers.filter((m: any) => (
+      !currentMemberIds.includes(m.id) &&
+      m.role !== 'OWNER'
+    ));
     setCompanyMembers(candidates);
     
     setSelectedInviteIds([]);
@@ -192,11 +218,12 @@ export default function Documents() {
       return;
     }
     try {
-      const members = await api.getDepartmentMembers(Number(activeDept.id));
+      const members = await loadAssignableDepartmentMembers(Number(activeDept.id));
       setDeptMembersForSelect(members);
       setNewDocTitle('');
+      const defaultAssigneeIds = getDefaultAssigneeIds(members);
       setInitialTasks([
-        { id: Date.now(), title: '', assigneeIds: currentUser ? [currentUser.id] : [] }
+        { id: Date.now(), title: '', assigneeIds: defaultAssigneeIds }
       ]);
       setShowCreateDocModal(true);
     } catch (e) {
@@ -207,7 +234,7 @@ export default function Documents() {
   const handleAddTaskRow = () => {
     setInitialTasks(prev => [
       ...prev,
-      { id: Date.now() + Math.random(), title: '', assigneeIds: currentUser ? [currentUser.id] : [] }
+      { id: Date.now() + Math.random(), title: '', assigneeIds: getDefaultAssigneeIds(deptMembersForSelect) }
     ]);
   };
 
@@ -292,11 +319,11 @@ export default function Documents() {
       return;
     }
     try {
-      const members = await api.getDepartmentMembers(targetDoc.department_id);
+      const members = await loadAssignableDepartmentMembers(targetDoc.department_id);
       setDeptMembersForSelect(members);
       setAddTaskDocId(docId);
       setAddTaskTitle('');
-      setAddTaskAssignees(currentUser ? [currentUser.id] : []);
+      setAddTaskAssignees(getDefaultAssigneeIds(members));
       setShowAddTaskModal(true);
     } catch (e) {
       console.error("Failed to load department members for adding task", e);
@@ -922,7 +949,11 @@ export default function Documents() {
                             setDeptMembers(updated);
                             if (currentCompany) {
                               const all = await api.getCompanyMembers(currentCompany.id);
-                              setCompanyMembers(all.filter((c: any) => !updated.map(u => u.id).includes(c.id)));
+                              const updatedMemberIds = updated.map(u => u.id);
+                              setCompanyMembers(all.filter((c: any) => (
+                                !updatedMemberIds.includes(c.id) &&
+                                c.role !== 'OWNER'
+                              )));
                             }
                           }
                         }}
