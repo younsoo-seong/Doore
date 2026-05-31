@@ -628,7 +628,7 @@ export default function EditTask() {
         )}
 
         {/* Action Toolbar */}
-        <div className="editor-toolbar" style={{ pointerEvents: isReadOnly ? 'none' : 'auto', opacity: isReadOnly ? 0.6 : 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
+        <div className="editor-toolbar" style={{ pointerEvents: 'auto', opacity: isReadOnly ? 0.6 : 1, padding: '12px 20px', borderBottom: '1px solid var(--border-color)' }}>
           <div className="toolbar-group">
             <span style={{ 
               fontSize: '12px', 
