@@ -120,7 +120,15 @@ export const api = {
     const departmentIds = new Set(getCompanyDepartmentIds(companyId));
     const documents = db.documents.filter((document: any) => departmentIds.has(document.department_id));
     const documentIds = new Set(documents.map((document: any) => document.id));
-    const tasks = db.tasks.filter((task: any) => documentIds.has(task.document_id));
+    const assignedTaskIds = new Set(
+      db.task_assignees
+        .filter((assignee: any) => !userId || assignee.user_id === userId)
+        .map((assignee: any) => assignee.task_id)
+    );
+    const tasks = db.tasks.filter((task: any) => (
+      documentIds.has(task.document_id) &&
+      (!userId || assignedTaskIds.has(task.id))
+    ));
     const taskIds = new Set(tasks.map((task: any) => task.id));
     return {
       tasks,
