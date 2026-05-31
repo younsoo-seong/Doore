@@ -11,6 +11,9 @@ export default function Approvals() {
   const [data, setData] = useState<any>(null);
   const [selectedDocId, setSelectedDocId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectTaskIds, setRejectTaskIds] = useState<number[]>([]);
+  const [rejectReason, setRejectReason] = useState('수정이 필요합니다.');
 
   const loadApprovals = async () => {
     if (!currentUser) return;
@@ -61,6 +64,25 @@ export default function Approvals() {
   const handleApprove = async () => {
     if (!selectedDoc || !currentUser) return;
     await api.approveDocument(selectedDoc.id, currentUser.id);
+    await loadApprovals();
+  };
+
+  const openRejectModal = () => {
+    if (!selectedDoc) return;
+    setRejectTaskIds(docTasks.map((task: any) => task.id));
+    setRejectReason('수정이 필요합니다.');
+    setShowRejectModal(true);
+  };
+
+  const handleReject = async (all = false) => {
+    if (!selectedDoc || !currentUser) return;
+    const taskIds = all ? docTasks.map((task: any) => task.id) : rejectTaskIds;
+    if (taskIds.length === 0) {
+      alert('반려할 Task를 선택해 주세요.');
+      return;
+    }
+    await api.rejectDocument(selectedDoc.id, currentUser.id, taskIds, rejectReason);
+    setShowRejectModal(false);
     await loadApprovals();
   };
 
@@ -147,19 +169,28 @@ export default function Approvals() {
                   <span>수정일: {new Date(selectedDoc.updated_at).toLocaleString('ko-KR')}</span>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <div className="approval-action-panel" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 <span className={`doc-status ${selectedDoc.status}`} style={{ padding: '6px 12px' }}>
                   {getDocumentStatusLabel(selectedDoc.status)}
                 </span>
                 {selectedDoc.status === 'PENDING' ? (
-                  <ApiHint hint={apiHints.approveDocument}>
-                    <button type="button" onClick={handleApprove} className="btn-primary" style={{ padding: '9px 16px' }}>
-                      승인 완료
+                  <>
+                    <button
+                      type="button"
+                      onClick={openRejectModal}
+                      className="approval-action-button reject"
+                    >
+                      반려
                     </button>
-                  </ApiHint>
+                    <ApiHint hint={apiHints.approveDocument}>
+                      <button type="button" onClick={handleApprove} className="approval-action-button approve">
+                        결재 승인
+                      </button>
+                    </ApiHint>
+                  </>
                 ) : selectedDoc.status === 'APPROVED' ? (
-                  <button type="button" onClick={handleExport} className="btn-primary" style={{ padding: '9px 16px' }}>
-                    문서 추출
+                  <button type="button" onClick={handleExport} className="approval-action-button export">
+                    PDF 출력
                   </button>
                 ) : null}
               </div>
@@ -228,6 +259,65 @@ export default function Approvals() {
             </aside>
           </div>
         </section>
+      )}
+      {showRejectModal && selectedDoc && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2600, background: 'rgba(15, 23, 42, 0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div style={{ width: 'min(920px, 100%)', maxHeight: '88vh', background: 'var(--bg-card)', borderRadius: '12px', boxShadow: '0 24px 60px rgba(15,23,42,0.25)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', overflow: 'hidden' }}>
+            <section style={{ padding: '22px', borderRight: '1px solid var(--border-color)', overflowY: 'auto' }}>
+              <div style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 800, marginBottom: '6px' }}>결재 반려 검토</div>
+              <h3 style={{ fontSize: '20px', marginBottom: '14px' }}>{selectedDoc.title}</h3>
+              <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'white' }}>
+                <RichTextContent
+                  content={selectedDoc.content || docTasks.map((task: any) => `## ${task.title}\n${task.content}`).join('\n\n')}
+                  style={{ fontSize: '14px', lineHeight: 1.7 }}
+                />
+              </div>
+            </section>
+            <aside style={{ padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+              <div>
+                <h3 style={{ fontSize: '16px', marginBottom: '4px' }}>재작업 전환 Task</h3>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>체크한 Task는 DOING 상태로 돌아갑니다.</p>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {docTasks.map((task: any) => (
+                  <label key={task.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', background: rejectTaskIds.includes(task.id) ? 'var(--primary-light)' : 'var(--bg-app)' }}>
+                    <input
+                      type="checkbox"
+                      checked={rejectTaskIds.includes(task.id)}
+                      onChange={(event) => {
+                        setRejectTaskIds((prev) => event.target.checked
+                          ? [...prev, task.id]
+                          : prev.filter((id) => id !== task.id));
+                      }}
+                    />
+                    <span style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <strong style={{ fontSize: '13px' }}>{task.title}</strong>
+                      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{task.review_status === 'APPROVED' ? '부서장 승인 완료' : '승인 요청 중'}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <textarea
+                value={rejectReason}
+                onChange={(event) => setRejectReason(event.target.value)}
+                rows={4}
+                style={{ width: '100%', resize: 'vertical', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '10px', fontFamily: 'inherit', fontSize: '13px' }}
+                placeholder="반려 사유"
+              />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <button type="button" onClick={() => setShowRejectModal(false)} className="approval-action-button secondary">
+                  취소
+                </button>
+                <button type="button" onClick={() => handleReject(true)} className="approval-action-button reject">
+                  전체 반려
+                </button>
+                <button type="button" onClick={() => handleReject(false)} className="approval-action-button danger">
+                  선택 반려
+                </button>
+              </div>
+            </aside>
+          </div>
+        </div>
       )}
     </div>
   );

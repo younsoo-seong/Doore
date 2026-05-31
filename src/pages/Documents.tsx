@@ -16,6 +16,12 @@ const sortTasksByOrder = (tasks: any[]) => [...tasks].sort((a: any, b: any) => {
   return orderA - orderB || a.id - b.id;
 });
 
+const getTaskReviewLabel = (task: any) => {
+  if (task.status !== 'DONE') return null;
+  if (task.review_status === 'APPROVED') return '승인 완료';
+  return '승인 요청 중';
+};
+
 export default function Documents() {
   const navigate = useNavigate();
   const { currentUser, currentCompany } = useAuth();
@@ -342,20 +348,19 @@ export default function Documents() {
   const handleRequestDocApproval = async () => {
     if (!viewingDoc) return;
     
-    // Verify if all tasks in this document are DONE
-    const notDoneTasks = viewingDocTasks.filter((t: any) => t.status !== 'DONE');
-    if (notDoneTasks.length > 0) {
-      alert(`아직 완료되지 않은 Task가 ${notDoneTasks.length}개 있습니다. 모든 Task가 완료(DONE) 상태여야 문서 승인이 가능합니다.\n\n[미완료 태스크]:\n${notDoneTasks.map(t => `• ${t.title}`).join('\n')}`);
+    const notApprovedTasks = viewingDocTasks.filter((t: any) => t.status !== 'DONE' || t.review_status !== 'APPROVED');
+    if (notApprovedTasks.length > 0) {
+      alert(`아직 부서장 승인 완료되지 않은 Task가 ${notApprovedTasks.length}개 있습니다. 모든 Task가 승인 완료되어야 결재 요청이 가능합니다.\n\n[미승인 Task]:\n${notApprovedTasks.map(t => `• ${t.title}`).join('\n')}`);
       return;
     }
 
-    const ok = window.confirm('승인을 요청하시겠습니까?\n요청 후 문서를 더 이상 수정할 수 없습니다.');
+    const ok = window.confirm('조직장에게 결재를 요청하시겠습니까?\n요청 후 문서를 더 이상 수정할 수 없습니다.');
     if (!ok) return;
 
     try {
       const updatedDoc = await api.requestDocumentApproval(viewingDoc.id);
       setViewingDoc(updatedDoc);
-      alert('승인 요청이 완료되었습니다.');
+      alert('결재 요청이 완료되었습니다.');
       
       // Reload document list
       await refreshActiveDepartmentDocs();
@@ -703,10 +708,10 @@ export default function Documents() {
                               padding: '3px 8px',
                               borderRadius: '999px',
                               fontWeight: '800',
-                              background: task.status === 'DONE' ? '#dcfce7' : task.status === 'DOING' ? '#fef3c7' : '#e2e8f0',
-                              color: task.status === 'DONE' ? '#15803d' : task.status === 'DOING' ? '#b45309' : '#475569'
+                              background: task.review_status === 'APPROVED' ? '#dcfce7' : task.status === 'DONE' ? '#dbeafe' : task.status === 'DOING' ? '#fef3c7' : '#e2e8f0',
+                              color: task.review_status === 'APPROVED' ? '#15803d' : task.status === 'DONE' ? '#1d4ed8' : task.status === 'DOING' ? '#b45309' : '#475569'
                             }}>
-                              {task.status === 'DONE' ? '완료' : task.status === 'DOING' ? '진행 중' : '할 일'}
+                              {getTaskReviewLabel(task) || (task.status === 'DOING' ? '진행 중' : '할 일')}
                             </span>
                           </div>
                           <h4 style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)', lineHeight: 1.35, overflowWrap: 'anywhere' }}>
@@ -748,7 +753,7 @@ export default function Documents() {
                               업무 보드로 이동
                             </button>
                           </ApiHint>
-                          {viewingDoc.status === 'WORKING' && canManageViewingDoc && task.status === 'DONE' && (
+                          {viewingDoc.status === 'WORKING' && canManageViewingDoc && task.status === 'DONE' && task.review_status !== 'APPROVED' && (
                             <ApiHint hint={apiHints.reopenTask}>
                               <button
                                 type="button"
@@ -774,6 +779,11 @@ export default function Documents() {
                           whiteSpace: 'pre-wrap',
                           minHeight: '60px'
                         }}>
+                          {task.rejection_reason && task.status === 'DOING' && (
+                            <div style={{ marginBottom: '12px', padding: '10px', borderRadius: '8px', background: '#fef2f2', color: '#b91c1c', fontWeight: 800 }}>
+                              반려 사유: {task.rejection_reason}
+                            </div>
+                          )}
                           <RichTextContent
                             content={task.content}
                             emptyStyle={{ color: 'var(--text-muted)', fontStyle: 'italic' }}
@@ -823,9 +833,12 @@ export default function Documents() {
                     onMouseOver={(e) => (e.currentTarget.style.opacity = '0.85')}
                     onMouseOut={(e) => (e.currentTarget.style.opacity = '1')}
                   >
-                     문서로 통합 및 승인 요청
+                     결재 요청
                   </button>
                 </ApiHint>
+              )}
+              {viewingDoc.status === 'PENDING' && canManageViewingDoc && (
+                <span className="doc-status PENDING" style={{ padding: '10px 14px' }}>결재 요청 중</span>
               )}
 
               {/* Navigate to tasks boards if editable */}

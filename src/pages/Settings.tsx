@@ -85,7 +85,7 @@ export default function Settings() {
     }
   };
 
-  const handleRoleChange = async (userId: number, newRole: 'OWNER' | 'ADMIN' | 'MEMBER') => {
+  const handleRoleChange = async (userId: number, newRole: 'OWNER' | 'MEMBER') => {
     if (!currentCompany) return;
     try {
       await api.updateMemberRole(currentCompany.id, userId, newRole);
@@ -260,12 +260,11 @@ export default function Settings() {
                             <ApiHint hint={apiHints.updateCompanyRole}>
                               <select
                                 value={member.role}
-                                onChange={(e) => handleRoleChange(member.id, e.target.value as 'OWNER' | 'ADMIN' | 'MEMBER')}
+                                onChange={(e) => handleRoleChange(member.id, e.target.value as 'OWNER' | 'MEMBER')}
                                 style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)' }}
                                 disabled={member.id === currentUser?.id}
                               >
                                 <option value="OWNER">조직장</option>
-                                <option value="ADMIN">관리자</option>
                                 <option value="MEMBER">일반 멤버</option>
                               </select>
                             </ApiHint>

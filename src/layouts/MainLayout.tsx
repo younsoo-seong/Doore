@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import { useNetwork } from '../context/NetworkContext';
 import { api } from '../api';
 import type { Notification, Company, ChatMessage } from '../data/mockDB';
-import { companyRoleLabels, departmentRoleLabels } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
 import '../styles/Notification.css';
@@ -45,9 +44,6 @@ export default function MainLayout() {
   useEffect(() => {
     async function fetchInitialData() {
       if (currentUser) {
-        const notifs = await api.getNotifications(currentUser.id);
-        setNotifications(notifs);
-        
         const companies = await api.getCompanies(currentUser.id);
         setUserCompanies(companies);
         if (companies.length > 0 && !currentCompany) {
@@ -55,6 +51,8 @@ export default function MainLayout() {
         }
 
         const targetCompany = currentCompany || companies[0];
+        const notifs = await api.getNotifications(currentUser.id, targetCompany?.id);
+        setNotifications(notifs);
         if (targetCompany) {
           const departments = await api.getDepartments(targetCompany.id);
           const departmentMembers = await Promise.all(
@@ -157,6 +155,11 @@ export default function MainLayout() {
     activeTab === 'unread' ? !n.is_read : n.is_read
   );
   const isOwner = roleSummary.companyRole === 'OWNER';
+  const displayRole = roleSummary.companyRole === 'OWNER'
+    ? '조직장'
+    : roleSummary.departmentRole === 'LEADER' || roleSummary.departmentRole === 'TASK_MANAGER'
+      ? '부서장'
+      : '부서원';
 
   const handleLogout = () => {
     logout();
@@ -225,28 +228,36 @@ export default function MainLayout() {
     <div className="app-container">
       {/* Sidebar / LNB */}
       <aside className="sidebar">
-        <div 
-          className="sidebar-header" 
-          ref={workspaceDropdownRef} 
-          style={{position: 'relative', cursor: 'pointer', padding: '0 16px'}} 
-          onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-        >
-          <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '8px', borderRadius: '6px', backgroundColor: showWorkspaceDropdown ? 'rgba(255,255,255,0.1)' : 'transparent'}}>
-            <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-              <div style={{width: '24px', height: '24px', backgroundColor: 'var(--primary)', borderRadius: '4px', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '12px'}}>
-                {currentCompany ? currentCompany.name.charAt(0) : 'D'}
-              </div>
-              <span className="logo-text" style={{fontSize: '15px'}}>{currentCompany ? currentCompany.name : '회사 생성 필요'}</span>
-            </div>
-            <span style={{fontSize: '10px', color: 'var(--sidebar-text)'}}>▼</span>
+        <div className="sidebar-header" style={{ padding: '0 20px' }}>
+          <div style={{display: 'flex', alignItems: 'center', gap: '10px'}}>
+            <img
+              src="/doore-logo.svg"
+              alt="DOORE 로고"
+              style={{ width: '36px', height: '30px', objectFit: 'contain', flexShrink: 0 }}
+            />
+            <span className="logo-text">DOORE</span>
           </div>
-          
-          {showWorkspaceDropdown && (
-            <div style={{
-              position: 'absolute', top: '64px', left: '16px', right: '16px', 
-              backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, color: 'var(--text-primary)', overflow: 'hidden'
-            }}>
+        </div>
+        <nav className="sidebar-nav">
+          <div
+            ref={workspaceDropdownRef}
+            style={{ position: 'relative' }}
+          >
+            <button
+              type="button"
+              className="nav-item workspace-nav-item"
+              onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
+            >
+              <span>{currentCompany ? currentCompany.name : '회사 생성 필요'}</span>
+              <span style={{ marginLeft: 'auto', fontSize: '10px' }}>▼</span>
+            </button>
+
+            {showWorkspaceDropdown && (
+              <div style={{
+                position: 'absolute', top: '44px', left: '0', right: '0',
+                backgroundColor: 'var(--bg-card)', borderRadius: '8px', border: '1px solid var(--border-color)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, color: 'var(--text-primary)', overflow: 'hidden'
+              }}>
               <div style={{padding: '8px 12px', fontSize: '11px', fontWeight: '600', color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-color)'}}>
                 내 워크스페이스
               </div>
@@ -285,8 +296,8 @@ export default function MainLayout() {
               )}
             </div>
           )}
-        </div>
-        <nav className="sidebar-nav">
+          </div>
+
           <NavLink to="/" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} end>
              대시보드
           </NavLink>
@@ -522,8 +533,7 @@ export default function MainLayout() {
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2, alignItems: 'flex-start' }}>
                   <span className="user-name">{currentUser?.name}</span>
                   <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                    {roleSummary.companyRole ? companyRoleLabels[roleSummary.companyRole as keyof typeof companyRoleLabels] : '역할 없음'}
-                    {roleSummary.departmentRole ? ` / ${departmentRoleLabels[roleSummary.departmentRole as keyof typeof departmentRoleLabels]}` : ''}
+                    {displayRole}
                   </span>
                 </div>
                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 800 }}>▼</span>

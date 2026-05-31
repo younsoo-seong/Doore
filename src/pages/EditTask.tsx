@@ -6,7 +6,7 @@ import { useNetwork } from '../context/NetworkContext';
 import { canEditTask, canReviewTask, getTaskStatusLabel } from '../utils/permissions';
 import ApiHint from '../components/ApiHint';
 import { apiHints } from '../utils/apiHints';
-import { formatRichTextHtml } from '../components/RichTextContent';
+import RichTextContent from '../components/RichTextContent';
 
 const cursorColors = ['#ec4899', '#2563eb', '#16a34a'];
 const cursorPath = [
@@ -54,6 +54,13 @@ const taskStatusColors = {
 type CursorSnapshot = { top: number; left: number; activity: string; step: number; draft: string };
 type InlineFormatCommand = 'bold' | 'italic' | 'underline';
 
+const getTaskDraftBackupKey = (taskId: number) => `doore_task_content_backup_${taskId}`;
+
+const writeTaskDraftBackup = (taskId: number, content: string) => {
+  if (!content.trim()) return;
+  localStorage.setItem(getTaskDraftBackupKey(taskId), content);
+};
+
 const getPeerDraftSentences = (taskTitle = '', taskRequirement = '') => {
   const source = `${taskTitle} ${taskRequirement}`.toLowerCase();
   if (source.includes('erd') || source.includes('데이터베이스') || source.includes('테이블')) return taskDraftLibrary.erd;
@@ -67,7 +74,7 @@ export default function EditTask() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { isOffline } = useNetwork();
-  const contentRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLTextAreaElement | null>(null);
   
   const [taskInfo, setTaskInfo] = useState<any>(null);
   const [documentInfo, setDocumentInfo] = useState<any>(null);
@@ -157,11 +164,10 @@ export default function EditTask() {
     if (!editor) return;
     if (document.activeElement === editor) return;
 
-    const nextHtml = formatRichTextHtml(editContent);
-    if (editor.innerHTML !== nextHtml) {
-      editor.innerHTML = nextHtml;
+    if (editor.value !== editContent) {
+      editor.value = editContent;
     }
-  }, [editContent, taskInfo?.id]);
+  }, [editContent, taskInfo?.id, taskStatus]);
 
   useEffect(() => {
     if (!documentInfo || !collaboratorCursors?.length || documentInfo.status === 'PENDING' || documentInfo.status === 'APPROVED') {
@@ -215,7 +221,9 @@ export default function EditTask() {
     if (!isEditable) return;
     setSaveStatus('saving');
     try {
-      await api.updateTaskContent(taskInfo.id, title, content);
+      const updatedTask = await api.updateTaskContent(taskInfo.id, title, content);
+      writeTaskDraftBackup(taskInfo.id, content);
+      if (updatedTask) setTaskInfo({ ...updatedTask });
       setSaveStatus('saved');
     } catch (e) {
       setSaveStatus('error');
@@ -225,37 +233,80 @@ export default function EditTask() {
   const syncEditorContent = () => {
     const editor = contentRef.current;
     if (!editor) return;
-    const nextContent = editor.innerHTML === '<br>' ? '' : editor.innerHTML;
+    const nextContent = editor.value;
     setEditContent(nextContent);
+    if (taskInfo) writeTaskDraftBackup(taskInfo.id, nextContent);
     handleContentSave(editTitle, nextContent);
   };
 
-  const mergeRemoteDraftsIntoContent = async () => {
-    if (!taskInfo || !isEditable || remoteDrafts.length === 0) return editContent;
-
+  const getCurrentEditorContent = () => {
     const editor = contentRef.current;
-    const currentContent = editor
-      ? editor.innerHTML === '<br>' ? '' : editor.innerHTML
-      : editContent;
+    if (!editor) return editContent || taskInfo?.content || '';
+    return editor.value;
+  };
+
+  const persistCurrentEditorContent = async () => {
+    if (!taskInfo || !isEditable) return editContent || taskInfo?.content || '';
+    const currentContent = getCurrentEditorContent();
+    setEditContent(currentContent);
+    writeTaskDraftBackup(taskInfo.id, currentContent);
+    const updatedTask = await api.updateTaskContent(taskInfo.id, editTitle, currentContent);
+    if (updatedTask) setTaskInfo({ ...updatedTask });
+    setSaveStatus('saved');
+    return currentContent;
+  };
+
+  const mergeRemoteDraftsIntoContent = async () => {
+    if (!taskInfo || !isEditable) return editContent || taskInfo?.content || '';
+
+    const currentContent = getCurrentEditorContent();
+    if (remoteDrafts.length === 0) {
+      await persistCurrentEditorContent();
+      return currentContent;
+    }
+
     const mergedDrafts = remoteDrafts
-      .map(({ member, draft }: any) => `<p>${member.name}: ${draft}</p>`)
+      .map(({ member, draft }: any) => `${member.name}: ${draft}`)
       .filter((line: string) => !currentContent.includes(line))
-      .join('');
+      .join('\n');
 
-    if (!mergedDrafts) return currentContent;
+    if (!mergedDrafts) {
+      await persistCurrentEditorContent();
+      return currentContent;
+    }
 
-    const mergedContent = `${mergedDrafts}${currentContent ? '<br>' : ''}${currentContent}`;
+    const mergedContent = `${mergedDrafts}${currentContent ? '\n' : ''}${currentContent}`;
     setEditContent(mergedContent);
-    if (editor) editor.innerHTML = formatRichTextHtml(mergedContent);
-    await api.updateTaskContent(taskInfo.id, editTitle, mergedContent);
+    writeTaskDraftBackup(taskInfo.id, mergedContent);
+    const editor = contentRef.current;
+    if (editor) editor.value = mergedContent;
+    const updatedTask = await api.updateTaskContent(taskInfo.id, editTitle, mergedContent);
+    if (updatedTask) setTaskInfo({ ...updatedTask });
     return mergedContent;
   };
 
   const applyInlineFormat = (command: InlineFormatCommand) => {
     if (isReadOnly) return;
-    contentRef.current?.focus();
-    document.execCommand(command, false);
-    syncEditorContent();
+    const editor = contentRef.current;
+    if (!editor || !taskInfo) return;
+    const wrappers = {
+      bold: ['<strong>', '</strong>'],
+      italic: ['<em>', '</em>'],
+      underline: ['<u>', '</u>'],
+    } as const;
+    const [open, close] = wrappers[command];
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const selected = editContent.slice(start, end);
+    const nextContent = `${editContent.slice(0, start)}${open}${selected || '텍스트'}${close}${editContent.slice(end)}`;
+    setEditContent(nextContent);
+    writeTaskDraftBackup(taskInfo.id, nextContent);
+    window.requestAnimationFrame(() => {
+      editor.focus();
+      const cursor = start + open.length + (selected || '텍스트').length + close.length;
+      editor.setSelectionRange(cursor, cursor);
+    });
+    handleContentSave(editTitle, nextContent);
   };
 
   const handleStatusChange = async (newStatus: 'TODO' | 'DOING' | 'DONE') => {
@@ -277,6 +328,24 @@ export default function EditTask() {
     }
   };
 
+  const handleRequestTaskApproval = async () => {
+    if (!taskInfo || !isEditable) return;
+    if (taskStatus !== 'DOING') {
+      alert('진행 중(DOING) 상태에서만 승인 요청할 수 있습니다.');
+      return;
+    }
+    try {
+      await mergeRemoteDraftsIntoContent();
+      await api.updateTaskStatus(taskInfo.id, 'DONE');
+      const updated = { ...taskInfo, status: 'DONE', review_status: 'REQUESTED' };
+      setTaskInfo(updated);
+      setTaskStatus('DONE');
+      alert('부서장에게 Task 승인 요청을 보냈습니다.');
+    } catch (e: any) {
+      alert(e.message || '승인 요청에 실패했습니다.');
+    }
+  };
+
   const handleApproveTask = async () => {
     if (!taskInfo || !currentUser || !canReviewCurrentTask) return;
     try {
@@ -284,7 +353,7 @@ export default function EditTask() {
       const updatedTask = await api.approveTask(taskInfo.id, currentUser.id);
       setTaskInfo({ ...updatedTask });
       setTaskStatus('DONE');
-      alert('Task가 승인되어 완료 처리되었습니다.');
+      alert('Task가 승인 완료되었습니다.');
     } catch (e: any) {
       alert(e.message || 'Task 승인에 실패했습니다.');
     }
@@ -300,7 +369,7 @@ export default function EditTask() {
       setTaskStatus('DOING');
       setEditContent(updatedTask.content || '');
       window.requestAnimationFrame(() => {
-        if (contentRef.current) contentRef.current.innerHTML = formatRichTextHtml(updatedTask.content || '');
+        if (contentRef.current) contentRef.current.value = updatedTask.content || '';
       });
       alert('Task가 반려되어 진행 중 상태로 돌아갔습니다.');
     } catch (e: any) {
@@ -337,9 +406,41 @@ export default function EditTask() {
     documentStatus: documentInfo.status,
     departmentRole: myDeptRole,
   });
-  const canApproveCurrentTask = canReviewCurrentTask && taskStatus !== 'DONE';
-  const canRejectCurrentTask = canReviewCurrentTask && taskStatus === 'DONE';
-  const lockReason = '읽기 전용 상태입니다. 수정이 필요하면 부서장에게 문의하십시오.';
+  const canRequestCurrentTaskApproval = isEditable && !canReviewCurrentTask && taskStatus === 'DOING';
+  const canApproveCurrentTask = canReviewCurrentTask && taskStatus === 'DONE' && taskInfo.review_status !== 'APPROVED';
+  const canRejectCurrentTask = canReviewCurrentTask && taskStatus === 'DONE' && taskInfo.review_status !== 'APPROVED';
+  const isReviewMode = canReviewCurrentTask && isReadOnly;
+  const isAssignee = currentUser ? selectedAssignees.includes(currentUser.id) : false;
+  const lockReason = (() => {
+    if (documentInfo.status === 'PENDING') {
+      return '문서가 결재 대기 중이라 수정할 수 없습니다. 결재가 반려되면 다시 작업할 수 있습니다.';
+    }
+    if (documentInfo.status === 'APPROVED') {
+      return '최종 결재가 완료된 문서입니다. 승인 완료 문서는 수정할 수 없습니다.';
+    }
+    if (taskStatus === 'DONE' && isAssignee) {
+      return taskInfo.review_status === 'APPROVED'
+        ? '부서장 승인이 완료된 Task입니다. 수정이 필요하면 부서장에게 문의하십시오.'
+        : '승인 요청 중인 Task입니다. 수정이 필요하면 부서장에게 반려를 요청하십시오.';
+    }
+    if (!isAssignee && !canReviewCurrentTask) {
+      return '이 Task의 담당자가 아니므로 보기만 가능합니다. 수정은 배정 담당자만 할 수 있습니다.';
+    }
+    if (canReviewCurrentTask && taskStatus !== 'DONE') {
+      return '부서장은 진행 중인 Task를 검토할 수 있지만 직접 수정하지 않습니다. 담당자가 승인 요청하면 승인/반려할 수 있습니다.';
+    }
+    return '읽기 전용 상태입니다. 수정이 필요하면 부서장에게 문의하십시오.';
+  })();
+  const reviewGuide = (() => {
+    if (!isReviewMode) return null;
+    if (taskStatus === 'DONE' && taskInfo.review_status !== 'APPROVED') {
+      return '승인 요청된 Task입니다. 내용을 검토한 뒤 승인 또는 반려를 선택하세요.';
+    }
+    if (taskStatus === 'DONE' && taskInfo.review_status === 'APPROVED') {
+      return '부서장 승인이 완료된 Task입니다. 내용은 읽기 전용으로 확인할 수 있습니다.';
+    }
+    return '담당자가 아직 승인 요청을 보내지 않았습니다. 내용 확인은 가능하지만 승인/반려는 요청 후 처리할 수 있습니다.';
+  })();
   const saveLabel = saveStatus === 'saved'
     ? isOffline ? '로컬 IndexedDB 저장 완료' : '동기화 완료'
     : saveStatus === 'saving'
@@ -347,6 +448,7 @@ export default function EditTask() {
       : '오류';
   const saveColor = saveStatus === 'error' ? '#ef4444' : isOffline ? '#b45309' : '#10b981';
   const saveBackground = saveStatus === 'error' ? '#fee2e2' : isOffline ? '#fef3c7' : '#dcfce7';
+  const displayedContent = editContent || taskInfo.content || '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px', padding: '20px', position: 'relative' }}>
@@ -390,6 +492,24 @@ export default function EditTask() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {canRequestCurrentTaskApproval && (
+            <ApiHint hint={apiHints.updateTaskStatus}>
+              <button
+                type="button"
+                onClick={handleRequestTaskApproval}
+                className="btn-primary"
+                style={{ padding: '8px 14px', minHeight: 0, fontSize: '13px' }}
+              >
+                승인 요청
+              </button>
+            </ApiHint>
+          )}
+          {taskStatus === 'DONE' && taskInfo.review_status === 'REQUESTED' && (
+            <span className="task-review-badge requested">승인 요청 중</span>
+          )}
+          {taskStatus === 'DONE' && taskInfo.review_status === 'APPROVED' && (
+            <span className="task-review-badge approved">승인 완료</span>
+          )}
           {canApproveCurrentTask && (
             <ApiHint hint={apiHints.approveTask}>
               <button
@@ -428,7 +548,7 @@ export default function EditTask() {
         overflow: 'hidden'
       }}>
         {/* Read Only Gray Lock Filter */}
-        {isReadOnly && (
+        {isReadOnly && !isReviewMode && (
           <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
             backgroundColor: 'rgba(240, 240, 240, 0.75)',
@@ -561,13 +681,23 @@ export default function EditTask() {
         </div>
 
         {/* Workspace Body Area */}
-        <div style={{ display: 'flex', flexGrow: 1, overflow: 'hidden', minHeight: 0, pointerEvents: isReadOnly ? 'none' : 'auto' }}>
+        <div style={{ display: 'flex', flexGrow: 1, overflow: 'hidden', minHeight: 0, pointerEvents: isReadOnly && !isReviewMode ? 'none' : 'auto' }}>
           
           {/* Left Main: Editor Canvas */}
           <div className="editor-canvas" style={{ flexGrow: 1, padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+            {reviewGuide && (
+              <div style={{ marginBottom: '16px', padding: '12px 14px', borderRadius: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', fontSize: '13px', fontWeight: 800 }}>
+                {reviewGuide}
+              </div>
+            )}
             {isOffline && (
               <div style={{ marginBottom: '16px', padding: '10px 12px', borderRadius: '8px', background: '#fffbeb', border: '1px solid #facc15', color: '#92400e', fontSize: '13px', fontWeight: 700 }}>
                 서버 연결이 끊겨 변경사항을 로컬 IndexedDB에 임시 저장합니다. 네트워크 복구 후 reconnect-sync가 실행됩니다.
+              </div>
+            )}
+            {taskInfo.rejection_reason && taskStatus === 'DOING' && (
+              <div style={{ marginBottom: '16px', padding: '12px', borderRadius: '8px', background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', fontSize: '13px', fontWeight: 800 }}>
+                반려 사유: {taskInfo.rejection_reason}
               </div>
             )}
             {/* Editable Task Title Input */}
@@ -610,33 +740,61 @@ export default function EditTask() {
               </div>
             ) : null}
 
-            {/* Editable Task Content Area */}
-            <div
-              ref={contentRef}
-              contentEditable={!isReadOnly}
-              suppressContentEditableWarning
-              role="textbox"
-              aria-multiline="true"
-              data-placeholder="업무에 대한 상세 내용이나 보고서를 작성하세요. 실시간으로 부서원들과 공유됩니다..."
-              className="rich-task-editor"
-              onInput={syncEditorContent}
-              onBlur={syncEditorContent}
-              style={{ 
-                width: '100%', 
-                minHeight: 'calc(100% - 100px)',
-                flexGrow: 1,
-                border: 'none', 
-                outline: 'none', 
-                fontSize: '15px', 
-                lineHeight: '1.6', 
-                color: isReadOnly ? 'var(--text-secondary)' : 'var(--text-primary)',
-                fontFamily: 'inherit',
-                backgroundColor: 'transparent',
-                whiteSpace: 'pre-wrap',
-                overflowY: 'auto',
-                cursor: isReadOnly ? 'default' : 'text',
-              }}
-            />
+            {isReadOnly ? (
+              <div
+                className="rich-task-editor readonly-task-content"
+                style={{
+                  width: '100%',
+                  minHeight: 'calc(100% - 100px)',
+                  flexGrow: 1,
+                  fontSize: '15px',
+                  lineHeight: '1.7',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  backgroundColor: 'transparent',
+                  whiteSpace: 'pre-wrap',
+                  overflowY: 'auto',
+                  cursor: 'default',
+                }}
+              >
+                <RichTextContent
+                  content={displayedContent}
+                  emptyText="작성된 Task 내용이 없습니다."
+                  emptyStyle={{ color: 'var(--text-muted)' }}
+                />
+              </div>
+            ) : (
+              <textarea
+                ref={contentRef}
+                aria-multiline="true"
+                className="rich-task-editor"
+                value={editContent}
+                onChange={(event) => {
+                  const nextContent = event.target.value;
+                  setEditContent(nextContent);
+                  if (taskInfo) writeTaskDraftBackup(taskInfo.id, nextContent);
+                  handleContentSave(editTitle, nextContent);
+                }}
+                onBlur={syncEditorContent}
+                placeholder="업무에 대한 상세 내용이나 보고서를 작성하세요. 실시간으로 부서원들과 공유됩니다..."
+                style={{
+                  width: '100%',
+                  minHeight: 'calc(100% - 100px)',
+                  flexGrow: 1,
+                  border: 'none',
+                  outline: 'none',
+                  fontSize: '15px',
+                  lineHeight: '1.6',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'inherit',
+                  backgroundColor: 'transparent',
+                  whiteSpace: 'pre-wrap',
+                  overflowY: 'auto',
+                  cursor: 'text',
+                  resize: 'none',
+                }}
+              />
+            )}
 
             {/* Peer input simulation */}
             {!isReadOnly && peerCursorMember && simulatedTyping && (

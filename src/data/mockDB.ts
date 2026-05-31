@@ -60,6 +60,12 @@ export interface Task {
   requirement: string;
   content: string;
   status: 'TODO' | 'DOING' | 'DONE';
+  review_status?: 'DRAFT' | 'REQUESTED' | 'APPROVED' | 'REJECTED';
+  rejection_reason?: string;
+  rejected_by?: number;
+  rejected_at?: string;
+  approved_by?: number;
+  approved_at?: string;
   due_date: string;
   created_by: number;
   assignee_count: number; // 1 이상 5 이하
@@ -114,39 +120,165 @@ export interface Notification {
 // Mock 데이터 테이블 (In-memory DB 역할)
 // ----------------------------------------------------
 
-export const users: User[] = [];
+export const users: User[] = [
+  { id: 1, email: 'admin@doore.com', name: '박재홍', created_at: '2026-01-10T09:00:00Z' },
+  { id: 2, email: 'leader@doore.com', name: '오승민', created_at: '2026-02-15T10:30:00Z' },
+  { id: 3, email: 'member@doore.com', name: '정동재', created_at: '2026-03-20T14:15:00Z' },
+  { id: 4, email: 'jhpark@doore.com', name: '박지훈', created_at: '2026-04-05T08:45:00Z' },
+  { id: 5, email: 'yjchoi@doore.com', name: '최유진', created_at: '2026-05-01T11:20:00Z' }
+];
 
 export const companies: Company[] = [
+  { id: 1, name: 'DOORE Corp', created_at: '2026-01-01T00:00:00Z' }
 ];
 
 export const company_members: CompanyMember[] = [
+  { company_id: 1, user_id: 1, role: 'OWNER', joined_at: '2026-01-10T09:00:00Z' },
+  { company_id: 1, user_id: 2, role: 'MEMBER', joined_at: '2026-02-15T10:30:00Z' },
+  { company_id: 1, user_id: 3, role: 'MEMBER', joined_at: '2026-03-20T14:15:00Z' },
+  { company_id: 1, user_id: 4, role: 'MEMBER', joined_at: '2026-04-05T08:45:00Z' },
+  { company_id: 1, user_id: 5, role: 'MEMBER', joined_at: '2026-05-01T11:20:00Z' }
 ];
 
 export const departments: Department[] = [
+  { id: 101, company_id: 1, name: '개발 팀', created_at: '2026-01-15T09:00:00Z' }
 ];
 
 export const department_members: DepartmentMember[] = [
+  { department_id: 101, user_id: 1, role: 'MEMBER' }, // 박재홍 (실시간 조회)
+  { department_id: 101, user_id: 2, role: 'LEADER' }, // 오승민
+  { department_id: 101, user_id: 3, role: 'MEMBER' } // 정동재
 ];
 
 export const documents: Document[] = [
+  {
+    id: 1001,
+    department_id: 101,
+    title: '그룹웨어 아키텍처 1차 보고서',
+    content: '시스템 아키텍처 설계 및 ERD 구성안 초안입니다.',
+    status: 'WORKING',
+    created_by: 2,
+    approver_id: 1,
+    created_at: '2026-05-05T09:00:00Z',
+    updated_at: '2026-05-09T14:30:00Z'
+  }
 ];
 
 export const document_members: DocumentMember[] = [
+  { user_id: 2, document_id: 1001, role: 'WRITE' },
+  { user_id: 3, document_id: 1001, role: 'READ' }
 ];
 
 export const tasks: Task[] = [
+  {
+    id: 5001,
+    document_id: 1001,
+    title: 'ERD 설계',
+    requirement: '데이터베이스 테이블 및 관계도(ERD) 작성',
+    content: '사용자, 문서, Task 테이블 스키마 작성 완료.',
+    status: 'DONE',
+    review_status: 'APPROVED',
+    approved_by: 2,
+    approved_at: '2026-05-09T14:00:00Z',
+    due_date: '2026-05-10T18:00:00Z',
+    created_by: 1,
+    assignee_count: 1,
+    created_at: '2026-05-05T10:00:00Z',
+    updated_at: '2026-05-09T14:00:00Z'
+  },
+  {
+    id: 5002,
+    document_id: 1001,
+    title: 'API 명세서 작성',
+    requirement: 'REST 및 WebSocket API 명세서 작성',
+    content: 'REST API와 WebSocket API 명세 초안 작성 완료.',
+    status: 'DONE',
+    review_status: 'APPROVED',
+    approved_by: 2,
+    approved_at: '2026-05-09T14:20:00Z',
+    due_date: '2026-05-12T18:00:00Z',
+    created_by: 1,
+    assignee_count: 1,
+    created_at: '2026-05-08T09:00:00Z',
+    updated_at: '2026-05-08T09:00:00Z'
+  },
+  {
+    id: 5003,
+    document_id: 1001,
+    title: '최종 오류 점검',
+    requirement: '최종 통합 문서의 오탈자, 누락, 용어 불일치 점검',
+    content: '문서 통합 전 최종 오류를 점검하고 있습니다.',
+    status: 'DOING',
+    review_status: 'DRAFT',
+    due_date: '2026-05-15T18:00:00Z',
+    created_by: 4,
+    assignee_count: 2,
+    created_at: '2026-05-08T10:30:00Z',
+    updated_at: '2026-05-09T11:00:00Z'
+  }
 ];
 
 export const task_assignees: TaskAssignee[] = [
+  { task_id: 5001, user_id: 2 }, // 오승민
+  { task_id: 5002, user_id: 2 }, // 오승민
+  { task_id: 5003, user_id: 3 } // 정동재
 ];
 
 export const task_files: TaskFile[] = [
+  {
+    id: 9001,
+    task_id: 5001,
+    category: 'REFERENCE',
+    type: 'IMAGE',
+    name: '참고_구조도.png',
+    url: 'https://s3.example.com/ref.png',
+    created_at: '2026-05-06T10:00:00Z'
+  }
 ];
 
 export const comments: Comment[] = [
+  {
+    id: 8001,
+    task_id: 5001,
+    user_id: 1,
+    content: 'ERD 스키마에서 알림 도메인 부분 추가 부탁드립니다.',
+    created_at: '2026-05-07T14:20:00Z'
+  }
 ];
 
 export const chat_messages: ChatMessage[] = [
+  {
+    id: 10001,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 2,
+    content: 'ERD 설계 리뷰가 끝나면 API 명세 쪽도 같이 확인하겠습니다.',
+    created_at: '2026-05-09T15:00:00Z'
+  },
+  {
+    id: 10002,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 3,
+    content: '네, API 명세 초안 업데이트 후 공유하겠습니다.',
+    created_at: '2026-05-09T15:04:00Z'
+  },
+  {
+    id: 10003,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 2,
+    content: '최종 오류 점검 Task만 승인되면 바로 결재 요청을 올리겠습니다.',
+    created_at: '2026-05-09T15:12:00Z'
+  },
+  {
+    id: 10004,
+    company_id: 1,
+    department_id: 101,
+    sender_id: 3,
+    content: '네, 최종 오류 점검 후 승인 요청 보내겠습니다.',
+    created_at: '2026-05-09T15:16:00Z'
+  }
 ];
 
 export const notifications: Notification[] = [
@@ -168,9 +300,173 @@ const defaultDB = {
   notifications
 };
 
+const DEMO_SCENARIO_VERSION = 'task-approval-demo-v2';
+
+function normalizeDB(database: any, resetDemoScenario: boolean) {
+  const owner = database.company_members?.find((cm: CompanyMember) => cm.company_id === 1 && cm.user_id === 1);
+  if (owner) owner.role = 'OWNER';
+
+  database.company_members?.forEach((member: CompanyMember) => {
+    if (member.role === 'ADMIN') member.role = 'MEMBER';
+  });
+
+  const executive = database.users?.find((user: User) => user.id === 1);
+  if (executive) {
+    executive.email = 'admin@doore.com';
+    executive.name = '박재홍';
+  }
+
+  const leader = database.users?.find((user: User) => user.id === 2);
+  if (leader) {
+    leader.email = 'leader@doore.com';
+    leader.name = '오승민';
+  }
+
+  const member = database.users?.find((user: User) => user.id === 3);
+  if (member) {
+    member.email = 'member@doore.com';
+    member.name = '정동재';
+  }
+
+  const ownerDeptMember = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 1);
+  if (ownerDeptMember) ownerDeptMember.role = 'MEMBER';
+  if (!ownerDeptMember) database.department_members?.push({ department_id: 101, user_id: 1, role: 'MEMBER' });
+
+  const departmentLeader = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 2);
+  if (departmentLeader) departmentLeader.role = 'LEADER';
+  if (!departmentLeader) database.department_members?.push({ department_id: 101, user_id: 2, role: 'LEADER' });
+
+  const departmentWorker = database.department_members?.find((dm: DepartmentMember) => dm.department_id === 101 && dm.user_id === 3);
+  if (departmentWorker) departmentWorker.role = 'MEMBER';
+  if (!departmentWorker) database.department_members?.push({ department_id: 101, user_id: 3, role: 'MEMBER' });
+
+  database.departments = database.departments?.filter((dept: Department) => dept.id === 101) ?? [];
+  const developmentDept = database.departments.find((dept: Department) => dept.id === 101);
+  if (developmentDept) {
+    developmentDept.company_id = 1;
+    developmentDept.name = '개발 팀';
+  } else {
+    database.departments.push({ id: 101, company_id: 1, name: '개발 팀', created_at: '2026-01-15T09:00:00Z' });
+  }
+
+  database.department_members = database.department_members?.filter((dm: DepartmentMember) => (
+    dm.department_id === 101 && [1, 2, 3].includes(dm.user_id)
+  )) ?? [];
+
+  database.documents = database.documents?.filter((doc: Document) => doc.id === 1001) ?? [];
+  if (!database.documents.some((doc: Document) => doc.id === 1001)) {
+    database.documents.push({ ...documents[0] });
+  }
+
+  const architectureDoc = database.documents?.find((doc: Document) => doc.id === 1001);
+  if (architectureDoc) {
+    architectureDoc.department_id = 101;
+    architectureDoc.title = '그룹웨어 아키텍처 1차 보고서';
+    architectureDoc.created_by = 2;
+    architectureDoc.approver_id = 1;
+    if (resetDemoScenario) {
+      architectureDoc.status = 'WORKING';
+    } else if (!['WORKING', 'PENDING', 'APPROVED', 'REJECTED'].includes(architectureDoc.status)) {
+      architectureDoc.status = 'WORKING';
+    }
+  }
+
+  database.tasks = [5001, 5002, 5003].map((id) => {
+    const existing = database.tasks?.find((task: Task) => task.id === id);
+    const seed = tasks.find((task) => task.id === id);
+    return { ...(seed || existing), ...(existing || {}) };
+  }).filter(Boolean);
+
+  const erdTask = database.tasks?.find((task: Task) => task.id === 5001);
+  if (erdTask) {
+    erdTask.document_id = 1001;
+    erdTask.title = 'ERD 설계';
+    erdTask.assignee_count = 1;
+    if (resetDemoScenario) {
+      erdTask.status = 'DONE';
+      erdTask.review_status = 'APPROVED';
+      erdTask.approved_by = 2;
+      erdTask.approved_at = '2026-05-09T14:00:00Z';
+      erdTask.rejection_reason = '';
+    } else {
+      erdTask.review_status ||= erdTask.status === 'DONE' ? 'APPROVED' : 'DRAFT';
+    }
+  }
+
+  const apiTask = database.tasks?.find((task: Task) => task.id === 5002);
+  if (apiTask) {
+    apiTask.document_id = 1001;
+    apiTask.title = 'API 명세서 작성';
+    apiTask.created_by = 2;
+    apiTask.assignee_count = 1;
+    if (resetDemoScenario) {
+      apiTask.status = 'DONE';
+      apiTask.review_status = 'APPROVED';
+      apiTask.approved_by = 2;
+      apiTask.approved_at = '2026-05-09T14:20:00Z';
+      apiTask.rejection_reason = '';
+    } else {
+      apiTask.review_status ||= apiTask.status === 'DONE' ? 'APPROVED' : 'DRAFT';
+    }
+  }
+
+  const finalCheckTask = database.tasks?.find((task: Task) => task.id === 5003);
+  if (finalCheckTask) {
+    finalCheckTask.document_id = 1001;
+    finalCheckTask.title = '최종 오류 점검';
+    finalCheckTask.requirement = '최종 통합 문서의 오탈자, 누락, 용어 불일치 점검';
+    if (resetDemoScenario) {
+      finalCheckTask.status = 'DOING';
+      finalCheckTask.review_status = 'DRAFT';
+      finalCheckTask.rejection_reason = '';
+      finalCheckTask.approved_by = undefined;
+      finalCheckTask.approved_at = undefined;
+      finalCheckTask.rejected_by = undefined;
+      finalCheckTask.rejected_at = undefined;
+    }
+    finalCheckTask.review_status ||= 'DRAFT';
+    finalCheckTask.assignee_count = 1;
+  }
+
+  database.task_assignees = [
+    { task_id: 5001, user_id: 2, assigned_at: '2026-05-09T09:00:00Z' },
+    { task_id: 5002, user_id: 2, assigned_at: '2026-05-09T09:00:00Z' },
+    { task_id: 5003, user_id: 3, assigned_at: '2026-05-09T09:00:00Z' },
+  ];
+
+  database.department_members?.forEach((dm: DepartmentMember) => {
+    if (!['LEADER', 'TASK_MANAGER', 'MEMBER'].includes(dm.role)) dm.role = 'MEMBER';
+  });
+
+  database.task_assignees?.forEach((assignee: TaskAssignee) => {
+    assignee.assigned_at ||= '2026-05-09T09:00:00Z';
+  });
+
+  database.chat_messages ||= [...chat_messages];
+  database.chat_messages?.forEach((message: ChatMessage) => {
+    if (message.department_id === undefined) message.department_id = 101;
+  });
+  chat_messages.forEach((message) => {
+    const exists = database.chat_messages?.some((item: ChatMessage) => item.id === message.id);
+    if (!exists) database.chat_messages?.push({ ...message });
+  });
+
+  database.notifications = (database.notifications ?? []).filter((notification: Notification) => {
+    if ([7001, 7002, 7003].includes(notification.id)) return false;
+    if (notification.user_id === 1 && notification.type === 'TASK_ASSIGNED') return false;
+    if (notification.message?.includes('기획안 승인 요청')) return false;
+    if (notification.message?.includes('배치 되었습니다')) return false;
+    return true;
+  });
+
+  return database;
+}
+
 const stored = localStorage.getItem('doore_mock_db');
-export const db = stored ? JSON.parse(stored) : defaultDB;
+const shouldResetDemoScenario = localStorage.getItem('doore_demo_scenario_version') !== DEMO_SCENARIO_VERSION;
+export const db = normalizeDB(stored ? JSON.parse(stored) : defaultDB, shouldResetDemoScenario);
 localStorage.setItem('doore_mock_db', JSON.stringify(db));
+localStorage.setItem('doore_demo_scenario_version', DEMO_SCENARIO_VERSION);
 
 const storedUser = localStorage.getItem('doore_user');
 if (storedUser) {

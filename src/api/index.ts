@@ -27,6 +27,71 @@ const isTaskAssignee = (taskId: number, userId: number) => (
   db.task_assignees.some((assignee: any) => assignee.task_id === taskId && assignee.user_id === userId)
 );
 
+const getDepartmentLeaderIds = (departmentId: number) => (
+  db.department_members
+    .filter((member: any) => (
+      member.department_id === departmentId &&
+      (member.role === 'LEADER' || member.role === 'TASK_MANAGER')
+    ))
+    .map((member: any) => member.user_id)
+);
+
+const getCompanyDepartmentIds = (companyId?: number) => (
+  companyId
+    ? db.departments.filter((department: any) => department.company_id === companyId).map((department: any) => department.id)
+    : db.departments.map((department: any) => department.id)
+);
+
+const notificationBelongsToCompany = (notification: any, companyId?: number) => {
+  if (!companyId) return true;
+  const departmentIds = new Set(getCompanyDepartmentIds(companyId));
+  const documents = db.documents.filter((document: any) => departmentIds.has(document.department_id));
+  const documentIds = new Set(documents.map((document: any) => document.id));
+  const tasks = db.tasks.filter((task: any) => documentIds.has(task.document_id));
+  return [...documents, ...tasks].some((item: any) => notification.message?.includes(item.title));
+};
+
+const getTaskDraftBackupKey = (taskId: number) => `doore_task_content_backup_${taskId}`;
+
+const readTaskDraftBackup = (taskId: number) => {
+  try {
+    return localStorage.getItem(getTaskDraftBackupKey(taskId)) || '';
+  } catch {
+    return '';
+  }
+};
+
+const writeTaskDraftBackup = (taskId: number, content: string) => {
+  if (!content.trim()) return;
+  try {
+    localStorage.setItem(getTaskDraftBackupKey(taskId), content);
+  } catch {
+    // Ignore storage quota errors in the mock app.
+  }
+};
+
+const extractTaskContentFromDocument = (docContent = '', taskTitle = '') => {
+  if (!docContent || !taskTitle) return '';
+  const marker = `[${taskTitle}]`;
+  const start = docContent.indexOf(marker);
+  if (start < 0) return '';
+  const bodyStart = start + marker.length;
+  const nextSection = docContent.indexOf('\n\n[', bodyStart);
+  return docContent
+    .slice(bodyStart, nextSection < 0 ? undefined : nextSection)
+    .trim();
+};
+
+const restoreTaskContentIfEmpty = (task: any, document?: any) => {
+  if (!task || task.content?.trim()) return;
+  const backup = readTaskDraftBackup(task.id);
+  const integrated = document ? extractTaskContentFromDocument(document.content, task.title) : '';
+  const restored = backup.trim() ? backup : integrated;
+  if (restored.trim()) {
+    task.content = restored;
+  }
+};
+
 export const api = {
   // Authentication
   login: async (email: string, _password?: string): Promise<{ user: User; token: string }> => {
@@ -50,19 +115,26 @@ export const api = {
   },
 
   // Data Fetching
-  getDashboardData: async () => {
+  getDashboardData: async (companyId?: number, userId?: number) => {
     await delay(500);
+    const departmentIds = new Set(getCompanyDepartmentIds(companyId));
+    const documents = db.documents.filter((document: any) => departmentIds.has(document.department_id));
+    const documentIds = new Set(documents.map((document: any) => document.id));
+    const tasks = db.tasks.filter((task: any) => documentIds.has(task.document_id));
+    const taskIds = new Set(tasks.map((task: any) => task.id));
     return {
-      tasks: [...db.tasks],
-      documents: [...db.documents],
-      task_assignees: [...db.task_assignees],
+      tasks,
+      documents,
+      task_assignees: db.task_assignees.filter((assignee: any) => taskIds.has(assignee.task_id)),
       users: [...db.users],
-      notifications: [...db.notifications],
-      chat_messages: [...(db.chat_messages || [])],
-      department_members: [...db.department_members],
-      companies: [...db.companies],
-      departments: [...db.departments],
-      company_members: [...db.company_members],
+      notifications: db.notifications
+        .filter((notification: any) => !userId || notification.user_id === userId)
+        .filter((notification: any) => notificationBelongsToCompany(notification, companyId)),
+      chat_messages: (db.chat_messages || []).filter((message: any) => !companyId || message.company_id === companyId),
+      department_members: db.department_members.filter((member: any) => departmentIds.has(member.department_id)),
+      companies: companyId ? db.companies.filter((company: any) => company.id === companyId) : [...db.companies],
+      departments: db.departments.filter((department: any) => !companyId || department.company_id === companyId),
+      company_members: db.company_members.filter((member: any) => !companyId || member.company_id === companyId),
     };
   },
 
@@ -85,9 +157,12 @@ export const api = {
   },
 
   // Notifications
-  getNotifications: async (userId: number) => {
+  getNotifications: async (userId: number, companyId?: number) => {
     await delay(300);
-    return db.notifications.filter((n: any) => n.user_id === userId).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return db.notifications
+      .filter((n: any) => n.user_id === userId)
+      .filter((n: any) => notificationBelongsToCompany(n, companyId))
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   },
 
   markNotificationAsRead: async (notificationId: number) => {
@@ -172,21 +247,13 @@ export const api = {
     };
     db.companies.push(newCompany);
     db.company_members.push({ company_id: newCompany.id, user_id: userId, role: 'OWNER', joined_at: new Date().toISOString() });
-    
-    // Create a default department
-    const newDept = {
-      id: db.departments.length > 0 ? Math.max(...db.departments.map((d: any) => d.id)) + 1 : 1,
-      company_id: newCompany.id, name: '기본 부서', created_at: new Date().toISOString()
-    };
-    db.departments.push(newDept);
-    db.department_members.push({ department_id: newDept.id, user_id: userId, role: 'LEADER' });
-    
+
     saveDB();
     emitDemoEvent({
       title: '조직 생성',
       api: 'POST /api/v1/companies',
       method: 'POST',
-      tables: ['companies', 'company_members', 'departments'],
+      tables: ['companies', 'company_members'],
       summary: '새 조직을 만들고 생성자를 조직장으로 등록합니다.',
       payload: `{ name: "${name}" }`,
       result: `company_id=${newCompany.id}, role=OWNER`,
@@ -231,7 +298,7 @@ export const api = {
     });
   },
 
-  addCompanyMember: async (companyId: number, email: string, role: 'OWNER' | 'ADMIN' | 'MEMBER' = 'MEMBER') => {
+  addCompanyMember: async (companyId: number, email: string, role: 'OWNER' | 'MEMBER' = 'MEMBER') => {
     await delay(400);
     const user = db.users.find((u: any) => u.email === email);
     if (!user) throw new Error('해당 이메일로 가입된 유저를 찾을 수 없습니다.');
@@ -252,7 +319,7 @@ export const api = {
     return { ...user, ...newMember, department_name: '소속 부서 없음' };
   },
 
-  updateMemberRole: async (companyId: number, userId: number, role: 'OWNER' | 'ADMIN' | 'MEMBER') => {
+  updateMemberRole: async (companyId: number, userId: number, role: 'OWNER' | 'MEMBER') => {
     await delay(200);
     const member = db.company_members.find((cm: any) => cm.company_id === companyId && cm.user_id === userId);
     if (member) {
@@ -263,7 +330,7 @@ export const api = {
         api: 'PATCH /api/v1/companies/{companyId}/members/{userId}',
         method: 'PATCH',
         tables: ['company_members'],
-        summary: '조직장/관리자/조직원 권한을 갱신합니다.',
+        summary: '조직장/일반 멤버 권한을 갱신합니다.',
         payload: `{ role: "${role}" }`,
         result: `user_id=${userId}`,
       });
@@ -411,6 +478,7 @@ export const api = {
       requirement: '',
       content: '',
       status: 'TODO' as const,
+      review_status: 'DRAFT' as const,
       due_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
       created_by: targetIds[0] || 1,
       assignee_count: targetIds.length,
@@ -452,17 +520,38 @@ export const api = {
     await delay(200);
     const task = db.tasks.find((t: any) => t.id === taskId);
     if (task) {
+      const document = db.documents.find((d: any) => d.id === task.document_id);
+      restoreTaskContentIfEmpty(task, document);
       task.status = status;
+      if (status === 'DONE') {
+        task.review_status = 'REQUESTED';
+        task.rejection_reason = '';
+        const leaderIds = document ? getDepartmentLeaderIds(document.department_id) : [];
+        leaderIds.forEach((userId: number) => {
+          db.notifications.push({
+            id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+            user_id: userId,
+            type: 'TASK_STATUS_CHANGED',
+            message: `Task 승인 요청이 도착했습니다: ${task.title}`,
+            is_read: false,
+            created_at: new Date().toISOString(),
+          });
+        });
+      } else {
+        task.review_status = 'DRAFT';
+        task.approved_by = undefined;
+        task.approved_at = undefined;
+      }
       task.updated_at = new Date().toISOString();
       saveDB();
       emitDemoEvent({
-        title: status === 'DONE' ? 'Task 완료 및 잠금' : 'Task 상태 변경',
+        title: status === 'DONE' ? 'Task 승인 요청' : 'Task 상태 변경',
         api: 'PATCH /api/v1/tasks/{taskId}/status',
         method: 'PATCH',
         tables: ['tasks', 'notifications'],
-        summary: status === 'DONE' ? '완료된 Task를 읽기 전용으로 잠급니다.' : 'Task 칸반 상태를 갱신합니다.',
+        summary: status === 'DONE' ? '담당자가 작업 완료 후 부서장에게 승인을 요청합니다.' : 'Task 칸반 상태를 갱신합니다.',
         payload: `{ status: "${status}" }`,
-        result: `task_id=${taskId}`,
+        result: status === 'DONE' ? `task_id=${taskId}, status=DONE, review_status=REQUESTED` : `task_id=${taskId}`,
       });
     }
     return true;
@@ -472,12 +561,20 @@ export const api = {
     await delay(250);
     const task = db.tasks.find((t: any) => t.id === taskId);
     if (!task) throw new Error('Task를 찾을 수 없습니다.');
+    if (task.status !== 'DONE') throw new Error('승인 요청된 DONE Task만 승인할 수 있습니다.');
+    if (task.review_status === 'APPROVED') throw new Error('이미 승인 완료된 Task입니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
     if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 승인할 수 있습니다.');
     if (!isDepartmentTaskManager(document, reviewerId)) throw new Error('Task 승인은 부서장만 할 수 있습니다.');
 
     const now = new Date().toISOString();
+    restoreTaskContentIfEmpty(task, document);
+    writeTaskDraftBackup(task.id, task.content || '');
     task.status = 'DONE';
+    task.review_status = 'APPROVED';
+    task.approved_by = reviewerId;
+    task.approved_at = now;
+    task.rejection_reason = '';
     task.updated_at = now;
 
     const assigneeIds = db.task_assignees
@@ -489,7 +586,7 @@ export const api = {
         id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
         user_id: userId,
         type: 'TASK_STATUS_CHANGED',
-        message: `Task가 승인되어 완료 처리되었습니다: ${task.title}`,
+        message: `Task가 승인 완료되었습니다: ${task.title}`,
         is_read: false,
         created_at: now,
       });
@@ -501,9 +598,9 @@ export const api = {
       api: 'PATCH /api/v1/tasks/{taskId}/approve',
       method: 'PATCH',
       tables: ['tasks', 'notifications'],
-      summary: 'Task를 DONE 상태로 전환하고 담당자에게 승인 완료 알림을 발송합니다.',
+      summary: 'DONE 상태의 Task를 승인 완료로 표시하고 담당자에게 알림을 발송합니다.',
       payload: `{ reviewer_id: ${reviewerId} }`,
-      result: `task_id=${taskId}, status=DONE`,
+      result: `task_id=${taskId}, status=DONE, review_status=APPROVED`,
     });
     return task;
   },
@@ -513,15 +610,20 @@ export const api = {
     const task = db.tasks.find((t: any) => t.id === taskId);
     if (!task) throw new Error('Task를 찾을 수 없습니다.');
     if (task.status !== 'DONE') throw new Error('완료된 Task만 반려할 수 있습니다.');
+    if (task.review_status === 'APPROVED') throw new Error('이미 승인 완료된 Task는 반려할 수 없습니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
     if (document?.status !== 'WORKING') throw new Error('작성 중 문서의 Task만 반려할 수 있습니다.');
     if (!isDepartmentTaskManager(document, reviewerId)) throw new Error('Task 반려는 부서장만 할 수 있습니다.');
 
     const now = new Date().toISOString();
     task.status = 'DOING';
-    task.content = reason.trim() ? `[반려]\n${reason.trim()}` : '[반려]';
+    restoreTaskContentIfEmpty(task, document);
+    task.review_status = 'REJECTED';
+    task.rejection_reason = reason.trim() || '수정이 필요합니다.';
     task.rejected_at = now;
     task.rejected_by = reviewerId;
+    task.approved_by = undefined;
+    task.approved_at = undefined;
     task.updated_at = now;
 
     const assigneeIds = db.task_assignees
@@ -564,6 +666,7 @@ export const api = {
 
     const now = new Date().toISOString();
     task.status = 'DOING';
+    task.review_status = 'DRAFT';
     task.updated_at = now;
 
     const assigneeIds = db.task_assignees
@@ -598,8 +701,16 @@ export const api = {
     await delay(250);
     const task = db.tasks.find((t: any) => t.id === taskId);
     if (task) {
+      const nextContent = content;
+      const currentContent = task.content || '';
+      const backupContent = readTaskDraftBackup(taskId);
       task.title = title;
-      task.content = content;
+      task.content = nextContent.trim() === ''
+        ? currentContent.trim() !== ''
+          ? currentContent
+          : backupContent
+        : nextContent;
+      writeTaskDraftBackup(taskId, task.content);
       task.updated_at = new Date().toISOString();
       saveDB();
       emitDemoEvent({
@@ -620,6 +731,8 @@ export const api = {
     const task = db.tasks.find((t: any) => t.id === taskId);
     if (!task) throw new Error('Task를 찾을 수 없습니다.');
     const document = db.documents.find((d: any) => d.id === task.document_id);
+    restoreTaskContentIfEmpty(task, document);
+    if (task.content?.trim()) saveDB();
     const assignees = db.task_assignees.filter((ta: any) => ta.task_id === taskId).map((ta: any) => ta.user_id);
     return { task, document, assignees };
   },
@@ -718,12 +831,12 @@ export const api = {
 
   requestDocumentApproval: async (documentId: number) => {
     await delay(600);
-    // 1. Check if all tasks belonging to this document are DONE
+    // 1. Check if all tasks belonging to this document are department-approved
     const relatedTasks = db.tasks.filter((t: any) => t.document_id === documentId);
     if (relatedTasks.length === 0) throw new Error('통합할 Task가 없습니다.');
-    const allDone = relatedTasks.every((t: any) => t.status === 'DONE');
-    if (!allDone) {
-      throw new Error('완료되지 않은 Task가 존재합니다. 모든 Task를 DONE 상태로 변경 후 승인 요청을 진행해주세요.');
+    const allApproved = relatedTasks.every((t: any) => t.status === 'DONE' && t.review_status === 'APPROVED');
+    if (!allApproved) {
+      throw new Error('모든 Task가 부서장 승인 완료 상태여야 결재 요청을 진행할 수 있습니다.');
     }
 
     // 2. Integration: Merge all task contents into the document
@@ -732,6 +845,8 @@ export const api = {
     
     let integratedContent = '';
     relatedTasks.forEach((t: any) => {
+      restoreTaskContentIfEmpty(t, doc);
+      writeTaskDraftBackup(t.id, t.content || '');
       integratedContent += `[${t.title}]\n${t.content}\n\n`;
     });
     
@@ -803,6 +918,70 @@ export const api = {
       summary: '조직장이 결재 대기 문서를 승인하고 영구 읽기 전용 상태로 전환합니다.',
       payload: '{}',
       result: `document_id=${documentId}, status=APPROVED`,
+    });
+    return doc;
+  },
+
+  rejectDocument: async (documentId: number, approverId: number, taskIds: number[], reason: string) => {
+    await delay(400);
+    const doc = db.documents.find((d: any) => d.id === documentId);
+    if (!doc) throw new Error('문서를 찾을 수 없습니다.');
+    if (doc.status !== 'PENDING') throw new Error('결재 대기 문서만 반려할 수 있습니다.');
+    const ownerId = getDocumentOwnerId(doc);
+    if (ownerId !== approverId) throw new Error('조직장만 반려할 수 있습니다.');
+
+    const now = new Date().toISOString();
+    const relatedTasks = db.tasks.filter((t: any) => t.document_id === documentId);
+    const selectedIds = taskIds.length > 0 ? taskIds : relatedTasks.map((task: any) => task.id);
+    relatedTasks.forEach((task: any) => {
+      if (!selectedIds.includes(task.id)) return;
+      restoreTaskContentIfEmpty(task, doc);
+      writeTaskDraftBackup(task.id, task.content || '');
+      task.status = 'DOING';
+      task.review_status = 'REJECTED';
+      task.rejection_reason = reason.trim() || '조직장 결재 반려로 재작업이 필요합니다.';
+      task.rejected_by = approverId;
+      task.rejected_at = now;
+      task.approved_by = undefined;
+      task.approved_at = undefined;
+      task.updated_at = now;
+    });
+
+    doc.status = 'WORKING';
+    doc.updated_at = now;
+    db.notifications.push({
+      id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+      user_id: doc.created_by,
+      type: 'DOC_REJECTED',
+      message: `문서 결재가 반려되었습니다: ${doc.title}`,
+      is_read: false,
+      created_at: now,
+    });
+
+    selectedIds.forEach((taskId: number) => {
+      db.task_assignees
+        .filter((assignee: any) => assignee.task_id === taskId)
+        .forEach((assignee: any) => {
+          db.notifications.push({
+            id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+            user_id: assignee.user_id,
+            type: 'TASK_STATUS_CHANGED',
+            message: `문서 결재 반려로 Task가 재작업 상태가 되었습니다: ${relatedTasks.find((task: any) => task.id === taskId)?.title}`,
+            is_read: false,
+            created_at: now,
+          });
+        });
+    });
+
+    saveDB();
+    emitDemoEvent({
+      title: '문서 결재 반려 및 Task 재작업 전환',
+      api: 'PATCH /api/v1/documents/{documentId}/reject',
+      method: 'PATCH',
+      tables: ['documents', 'tasks', 'notifications'],
+      summary: '조직장이 결재 대기 문서를 반려하고 선택한 Task를 DOING 상태로 되돌립니다.',
+      payload: `{ task_ids: [${selectedIds.join(', ')}], reason: "${reason}" }`,
+      result: `document_id=${documentId}, status=WORKING`,
     });
     return doc;
   },

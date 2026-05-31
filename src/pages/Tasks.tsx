@@ -9,6 +9,17 @@ import { apiHints } from '../utils/apiHints';
 
 const columns = ['TODO', 'DOING', 'DONE'] as const;
 
+const getTaskReviewLabel = (task: any) => {
+  if (task.status !== 'DONE') return null;
+  if (task.review_status === 'APPROVED') return '승인 완료';
+  return '승인 요청 중';
+};
+
+const getPendingReviewLabel = (task: any, canReview: boolean) => {
+  if (!canReview || task.status !== 'DOING') return null;
+  return '담당자 승인 요청 전';
+};
+
 export default function Tasks() {
   const navigate = useNavigate();
   const { currentUser, currentCompany } = useAuth();
@@ -77,7 +88,7 @@ export default function Tasks() {
     if (!data || !currentCompany) return [];
     const companyDeptIds = departments.map((dept) => dept.id);
     const companyDocIds = data.documents
-      .filter((doc: any) => companyDeptIds.includes(doc.department_id))
+      .filter((doc: any) => companyDeptIds.includes(doc.department_id) && doc.status !== 'APPROVED')
       .map((doc: any) => doc.id);
     let tasks = data.tasks.filter((task: any) => companyDocIds.includes(task.document_id));
 
@@ -137,6 +148,20 @@ export default function Tasks() {
     }
   };
 
+  const handleRequestTaskApproval = async (event: MouseEvent, task: any) => {
+    event.stopPropagation();
+
+    setProcessingTaskId(task.id);
+    try {
+      await api.updateTaskStatus(task.id, 'DONE');
+      await loadBoardData();
+    } catch (e: any) {
+      alert(e.message || '승인 요청에 실패했습니다.');
+    } finally {
+      setProcessingTaskId(null);
+    }
+  };
+
   if (loading) {
     return <div style={{ padding: '40px', color: 'var(--text-muted)' }}>업무 보드를 불러오는 중...</div>;
   }
@@ -149,14 +174,21 @@ export default function Tasks() {
     const doc = data.documents.find((item: any) => item.id === task.document_id);
     const dept = departments.find((item) => item.id === doc?.department_id);
     const departmentRole = getDepartmentRole(doc?.department_id);
+    const assigneeIds = data.task_assignees
+      .filter((assignee: any) => assignee.task_id === task.id)
+      .map((assignee: any) => assignee.user_id);
+    const isAssignee = currentUser ? assigneeIds.includes(currentUser.id) : false;
     const canReview = canReviewTask({
       documentStatus: doc?.status,
       departmentRole,
     });
-    const canApprove = canReview && task.status !== 'DONE';
-    const canReject = canReview && task.status === 'DONE';
+    const canRequestApproval = isAssignee && !canReview && task.status === 'DOING' && doc?.status === 'WORKING';
+    const canApprove = canReview && task.status === 'DONE' && task.review_status !== 'APPROVED';
+    const canReject = canReview && task.status === 'DONE' && task.review_status !== 'APPROVED';
     const locked = task.status === 'DONE' || doc?.status === 'PENDING' || doc?.status === 'APPROVED';
     const busy = processingTaskId === task.id;
+    const reviewLabel = getTaskReviewLabel(task);
+    const pendingReviewLabel = getPendingReviewLabel(task, canReview);
 
     return (
       <div
@@ -173,8 +205,7 @@ export default function Tasks() {
           textAlign: 'left',
           borderColor: locked ? '#cbd5e1' : 'var(--border-color)',
           opacity: locked ? 0.86 : 1,
-          minHeight: '148px',
-          width: '100%'
+          minHeight: '148px'
         }}
         title={locked ? '잠금된 Task입니다. 클릭하면 읽기 전용으로 확인합니다.' : 'Task 편집 화면으로 이동합니다.'}
       >
@@ -184,9 +215,36 @@ export default function Tasks() {
         </div>
         <div className="task-title">{task.title}</div>
         <div className="task-doc-title">{doc?.title}</div>
-        <div className="task-footer" style={{ alignItems: 'flex-end', gap: '8px' }}>
+        {task.rejection_reason && task.status === 'DOING' && (
+          <div className="task-reject-reason">
+            반려 사유: {task.rejection_reason}
+          </div>
+        )}
+        {reviewLabel && (
+          <span className={`task-review-badge ${task.review_status === 'APPROVED' ? 'approved' : 'requested'}`}>
+            {reviewLabel}
+          </span>
+        )}
+        {pendingReviewLabel && (
+          <span className="task-review-badge waiting">
+            {pendingReviewLabel}
+          </span>
+        )}
+        <div className="task-footer">
           <span className="due-date">{new Date(task.due_date).toLocaleDateString('ko-KR')}</span>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div className="task-actions">
+            {canRequestApproval && (
+              <ApiHint hint={apiHints.updateTaskStatus}>
+                <button
+                  type="button"
+                  onClick={(event) => handleRequestTaskApproval(event, task)}
+                  disabled={busy}
+                  style={{ padding: '5px 9px', borderRadius: '6px', border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: '11px', fontWeight: 800, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1 }}
+                >
+                  승인 요청
+                </button>
+              </ApiHint>
+            )}
             {canApprove && (
               <ApiHint hint={apiHints.approveTask}>
                 <button
@@ -218,15 +276,15 @@ export default function Tasks() {
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gap: '18px', padding: '20px', height: '100%' }}>
-      <div className="card" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
-        <div>
+    <div style={{ display: 'grid', gridTemplateRows: 'auto minmax(0, 1fr)', gap: '18px', padding: '20px', height: '100%', minWidth: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: '16px', minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ minWidth: 0 }}>
           <h2 style={{ fontSize: '18px', marginBottom: '4px' }}>Task 칸반 보드</h2>
           <p style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
             부서장은 관리 중인 부서 Task를 검토하고, 개인 담당 업무는 별도로 확인할 수 있습니다.
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', flexWrap: 'wrap', flexShrink: 0 }}>
           {managedDepartmentIds.length > 0 && (
             <button
               type="button"
@@ -266,17 +324,17 @@ export default function Tasks() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: '18px', minHeight: 0 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(220px, 1fr))', gap: '16px', minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) clamp(220px, 22vw, 300px)', gap: '18px', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px', minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
           {columns.map((status) => {
             const tasks = filteredTasks.filter((task: any) => task.status === status);
             return (
-              <section key={status} className="kanban-column" style={{ minHeight: 0, overflow: 'hidden' }}>
+              <section key={status} className={`kanban-column task-column-${status}`} style={{ minHeight: 0, overflow: 'hidden' }}>
                 <div className="column-title">
                   <span>{getTaskStatusLabel(status)} ({status})</span>
                   <span className="column-count">{tasks.length}</span>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', paddingRight: '2px' }}>
+                <div className="task-card-list">
                   {tasks.map(renderTaskCard)}
                   {tasks.length === 0 && (
                     <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '32px 8px' }}>
@@ -289,7 +347,7 @@ export default function Tasks() {
           })}
         </div>
 
-        <aside className="card" style={{ minHeight: 0, overflow: 'hidden' }}>
+        <aside className="card" style={{ minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
           <h3 style={{ fontSize: '16px', marginBottom: '12px' }}>마감 캘린더</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto' }}>
             {calendarTasks.map((task: any) => {

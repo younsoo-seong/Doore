@@ -1,0 +1,51 @@
+<svg width="96" height="80" viewBox="0 0 96 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="purple-glow" x="0" y="0" width="96" height="80" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="#9B6CFF" flood-opacity=".7"/>
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#7C3AED" flood-opacity=".35"/>
+    </filter>
+    <linearGradient id="blue-band" x1="18" y1="21" x2="80" y2="21" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5A9FDC"/>
+      <stop offset="1" stop-color="#A8D4FF"/>
+    </linearGradient>
+    <linearGradient id="green-band" x1="18" y1="35" x2="72" y2="35" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55B13D"/>
+      <stop offset="1" stop-color="#B7E8B8"/>
+    </linearGradient>
+    <linearGradient id="yellow-band" x1="18" y1="49" x2="64" y2="49" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFC51D"/>
+      <stop offset="1" stop-color="#FFD593"/>
+    </linearGradient>
+    <linearGradient id="red-band" x1="18" y1="63" x2="55" y2="63" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5362"/>
+      <stop offset="1" stop-color="#FFA0A0"/>
+    </linearGradient>
+  </defs>
+
+  <path
+    d="M10 8H47.5C70.9 8 87 22.4 87 40C87 57.6 70.9 72 47.5 72H10V8Z"
+    fill="white"
+    filter="url(#purple-glow)"
+  />
+  <path
+    d="M16 14H48C67.7 14 80.5 25.5 80.5 40C80.5 54.5 67.7 66 48 66H16V14Z"
+    fill="white"
+  />
+  <path
+    d="M22 21H47.3C60.6 21 71.2 27.4 75.1 38.2C69.1 30.8 59.4 27.6 47.1 27.6H22V21Z"
+    fill="url(#blue-band)"
+  />
+  <path
+    d="M22 35H46.6C58.3 35 67.1 40.2 70.5 49.9C64.7 43.8 56.4 41.6 45.6 41.6H22V35Z"
+    fill="url(#green-band)"
+  />
+  <path
+    d="M22 49H44.2C54.5 49 61.4 53.7 63.5 62.6C58.9 57.3 51.9 55.6 43.3 55.6H22V49Z"
+    fill="url(#yellow-band)"
+  />
+  <path
+    d="M22 63H42.3C50.4 63 56 67.3 56 72.7C56 76 52.9 78 47.7 78H22V63Z"
+    fill="url(#red-band)"
+    transform="translate(0 -8)"
+  />
+</svg>

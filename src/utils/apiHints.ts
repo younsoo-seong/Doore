@@ -39,7 +39,7 @@ export const apiHints = {
     title: '회사 권한 변경',
     api: 'PATCH /api/v1/companies/{companyId}/members/{userId}',
     erd: ['company_members'],
-    event: 'OWNER / ADMIN / MEMBER 변경',
+    event: 'OWNER / MEMBER 변경',
     result: '계정의 조직 권한이 즉시 변경됩니다.',
   },
   createDepartment: {

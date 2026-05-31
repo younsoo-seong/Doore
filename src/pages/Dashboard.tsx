@@ -1,16 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import { getTaskStatusLabel } from '../utils/permissions';
+
+const columns = ['TODO', 'DOING', 'DONE'] as const;
+
+const getTaskReviewLabel = (task: any) => {
+  if (task.status !== 'DONE') return null;
+  if (task.review_status === 'APPROVED') return '승인 완료';
+  return '승인 요청 중';
+};
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { currentCompany, currentUser } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
+      if (!currentCompany || !currentUser) {
+        setData(null);
+        setLoading(false);
+        return;
+      }
       try {
-        const result = await api.getDashboardData();
+        const result = await api.getDashboardData(currentCompany.id, currentUser.id);
         setData(result);
       } catch (error) {
         console.error("Failed to fetch dashboard data", error);
@@ -19,7 +35,7 @@ export default function Dashboard() {
       }
     }
     loadData();
-  }, []);
+  }, [currentCompany, currentUser]);
 
   if (loading) {
     return (
@@ -31,6 +47,43 @@ export default function Dashboard() {
 
   if (!data) return null;
 
+  const activeTasks = data.tasks.filter((task: any) => {
+    const doc = data.documents.find((item: any) => item.id === task.document_id);
+    return doc?.status !== 'APPROVED';
+  });
+
+  const getDueLabel = (task: any) => (
+    task.status === 'DONE'
+      ? '마감됨'
+      : new Date(task.due_date).toLocaleDateString('ko-KR')
+  );
+
+  const renderTaskCard = (task: any) => {
+    const doc = data.documents.find((item: any) => item.id === task.document_id);
+    const reviewLabel = getTaskReviewLabel(task);
+
+    return (
+      <div key={task.id} className="task-card" onClick={() => navigate('/tasks')}>
+        <div className="task-title">{task.title}</div>
+        <div className="task-doc-title">{doc?.title}</div>
+        {reviewLabel && (
+          <span className={`task-review-badge ${task.review_status === 'APPROVED' ? 'approved' : 'requested'}`}>
+            {reviewLabel}
+          </span>
+        )}
+        <div className="task-footer">
+          <span className="due-date">{getDueLabel(task)}</span>
+          <div className="assignees">
+            {data.task_assignees.filter((a: any) => a.task_id === task.id).map((assignee: any) => {
+              const user = data.users.find((u: any) => u.id === assignee.user_id);
+              return user ? <div key={user.id} className="assignee-avatar" title={user.name}>{user.name.charAt(0)}</div> : null;
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="dashboard-grid">
       {/* Kanban Board */}
@@ -39,74 +92,25 @@ export default function Dashboard() {
           <span>내 TASK 현황</span>
         </div>
         <div className="kanban-board">
-          {/* TODO Column */}
-          <div className="kanban-column">
-            <div className="column-title">
-              <span>TODO</span>
-              <span className="column-count">{data.tasks.filter((t: any) => t.status === 'TODO').length}</span>
-            </div>
-            {data.tasks.filter((t: any) => t.status === 'TODO').map((task: any) => (
-              <div key={task.id} className="task-card" onClick={() => navigate('/tasks')}>
-                <div className="task-title">{task.title}</div>
-                <div className="task-doc-title">{data.documents.find((d: any) => d.id === task.document_id)?.title}</div>
-                <div className="task-footer">
-                  <span className="due-date">D-3</span>
-                  <div className="assignees">
-                    {data.task_assignees.filter((a: any) => a.task_id === task.id).map((assignee: any) => {
-                      const user = data.users.find((u: any) => u.id === assignee.user_id);
-                      return user ? <div key={user.id} className="assignee-avatar" title={user.name}>{user.name.charAt(0)}</div> : null;
-                    })}
-                  </div>
+          {columns.map((status) => {
+            const tasks = activeTasks.filter((task: any) => task.status === status);
+            return (
+              <div key={status} className={`kanban-column task-column-${status}`}>
+                <div className="column-title">
+                  <span>{getTaskStatusLabel(status)} ({status})</span>
+                  <span className="column-count">{tasks.length}</span>
+                </div>
+                <div className="task-card-list">
+                  {tasks.map(renderTaskCard)}
+                  {tasks.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'center', padding: '32px 8px' }}>
+                      표시할 Task가 없습니다.
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* DOING Column */}
-          <div className="kanban-column">
-            <div className="column-title">
-              <span>DOING</span>
-              <span className="column-count">{data.tasks.filter((t: any) => t.status === 'DOING').length}</span>
-            </div>
-            {data.tasks.filter((t: any) => t.status === 'DOING').map((task: any) => (
-              <div key={task.id} className="task-card" onClick={() => navigate('/tasks')}>
-                <div className="task-title">{task.title}</div>
-                <div className="task-doc-title">{data.documents.find((d: any) => d.id === task.document_id)?.title}</div>
-                <div className="task-footer">
-                  <span className="due-date">D-6</span>
-                  <div className="assignees">
-                    {data.task_assignees.filter((a: any) => a.task_id === task.id).map((assignee: any) => {
-                      const user = data.users.find((u: any) => u.id === assignee.user_id);
-                      return user ? <div key={user.id} className="assignee-avatar" title={user.name}>{user.name.charAt(0)}</div> : null;
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* DONE Column */}
-          <div className="kanban-column">
-            <div className="column-title">
-              <span>DONE</span>
-              <span className="column-count">{data.tasks.filter((t: any) => t.status === 'DONE').length}</span>
-            </div>
-            {data.tasks.filter((t: any) => t.status === 'DONE').map((task: any) => (
-              <div key={task.id} className="task-card" onClick={() => navigate('/tasks')}>
-                <div className="task-title">{task.title}</div>
-                <div className="task-doc-title">{data.documents.find((d: any) => d.id === task.document_id)?.title}</div>
-                <div className="task-footer">
-                  <span className="due-date">마감됨</span>
-                  <div className="assignees">
-                    {data.task_assignees.filter((a: any) => a.task_id === task.id).map((assignee: any) => {
-                      const user = data.users.find((u: any) => u.id === assignee.user_id);
-                      return user ? <div key={user.id} className="assignee-avatar" title={user.name}>{user.name.charAt(0)}</div> : null;
-                    })}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -132,11 +136,11 @@ export default function Dashboard() {
 
         {/* Members */}
         <div className="card">
-          <div className="card-header">
-            <span>개발 팀 부서원</span>
-          </div>
-          <div className="members-list">
-            {data.department_members.filter((dm: any) => dm.department_id === 101).map((dm: any) => {
+        <div className="card-header">
+          <span>{data.departments[0]?.name ? `${data.departments[0].name} 부서원` : '부서원'}</span>
+        </div>
+        <div className="members-list">
+            {data.department_members.map((dm: any) => {
               const user = data.users.find((u: any) => u.id === dm.user_id);
               if (!user) return null;
               return (
@@ -150,6 +154,11 @@ export default function Dashboard() {
                 </div>
               );
             })}
+            {data.department_members.length === 0 && (
+              <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
+                아직 생성된 부서나 배치된 부서원이 없습니다.
+              </div>
+            )}
           </div>
         </div>
       </div>

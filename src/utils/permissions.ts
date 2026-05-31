@@ -1,9 +1,8 @@
-export type CompanyRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+export type CompanyRole = 'OWNER' | 'MEMBER';
 export type DepartmentRole = 'LEADER' | 'TASK_MANAGER' | 'MEMBER';
 
 export const companyRoleLabels: Record<CompanyRole, string> = {
   OWNER: '조직장',
-  ADMIN: '관리자',
   MEMBER: '조직원',
 };
 
@@ -14,7 +13,7 @@ export const departmentRoleLabels: Record<DepartmentRole, string> = {
 };
 
 export function isCompanyManager(role?: string | null) {
-  return role === 'OWNER' || role === 'ADMIN';
+  return role === 'OWNER';
 }
 
 export function canManageTasks(role?: string | null) {
@@ -29,10 +28,9 @@ export function canEditTask(params: {
   departmentRole?: string | null;
   isOffline?: boolean;
 }) {
-  const { documentStatus, taskStatus, currentUserId, assigneeIds, departmentRole } = params;
+  const { documentStatus, taskStatus, currentUserId, assigneeIds } = params;
   if (documentStatus === 'PENDING' || documentStatus === 'APPROVED') return false;
   if (taskStatus === 'DONE') return false;
-  if (canManageTasks(departmentRole)) return true;
   return currentUserId ? assigneeIds.includes(currentUserId) : false;
 }
 
