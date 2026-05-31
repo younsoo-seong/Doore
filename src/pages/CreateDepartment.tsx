@@ -8,7 +8,7 @@ import { apiHints } from '../utils/apiHints';
 
 export default function CreateDepartment() {
   const navigate = useNavigate();
-  const { currentCompany } = useAuth();
+  const { currentCompany, currentUser } = useAuth();
   
   const [deptName, setDeptName] = useState('');
   const [companyMembers, setCompanyMembers] = useState<any[]>([]);
@@ -22,7 +22,11 @@ export default function CreateDepartment() {
       if (currentCompany) {
         try {
           const members = await api.getCompanyMembers(currentCompany.id);
-          setCompanyMembers(members);
+          const assignableMembers = members.filter((member: any) => (
+            member.id !== currentUser?.id &&
+            member.role !== 'OWNER'
+          ));
+          setCompanyMembers(assignableMembers);
         } catch (e) {
           console.error(e);
         }
@@ -30,7 +34,7 @@ export default function CreateDepartment() {
       setLoading(false);
     }
     loadMembers();
-  }, [currentCompany]);
+  }, [currentCompany, currentUser]);
 
   const handleSelect = (userId: number) => {
     setSelectedIds(prev => [...prev, userId]);
