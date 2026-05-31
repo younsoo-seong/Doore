@@ -77,6 +77,13 @@ export const apiHints = {
     event: 'TASK_ASSIGNED 알림 발생',
     result: '담당자 내 Task 보드에 TODO 카드가 표시됩니다.',
   },
+  assignTaskAssignee: {
+    title: 'Task 담당자 변경',
+    api: 'POST /api/v1/tasks/{taskId}/assignees',
+    erd: ['task_assignees', 'tasks', 'notifications'],
+    event: 'TASK_ASSIGNED 알림 발생',
+    result: 'Task 담당자 목록과 담당자 수가 갱신됩니다.',
+  },
   updateTaskStatus: {
     title: 'Task 상태 변경',
     api: 'PATCH /api/v1/tasks/{taskId}/status',

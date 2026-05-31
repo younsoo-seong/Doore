@@ -753,12 +753,32 @@ export const api = {
     if (userIds.length > 5) {
       throw new Error('담당자는 최대 5명까지만 지정할 수 있습니다.');
     }
+    const task = db.tasks.find((item: any) => item.id === taskId);
+    const previousAssigneeIds = db.task_assignees
+      .filter((ta: any) => ta.task_id === taskId)
+      .map((ta: any) => ta.user_id);
     // Delete old assignees
     db.task_assignees = db.task_assignees.filter((ta: any) => ta.task_id !== taskId);
     // Push new assignees
     userIds.forEach((uid) => {
       db.task_assignees.push({ task_id: taskId, user_id: uid, assigned_at: new Date().toISOString() });
     });
+    if (task) {
+      task.assignee_count = userIds.length;
+      task.updated_at = new Date().toISOString();
+    }
+    userIds
+      .filter((userId) => !previousAssigneeIds.includes(userId))
+      .forEach((userId) => {
+        db.notifications.push({
+          id: db.notifications.length > 0 ? Math.max(...db.notifications.map((n: any) => n.id)) + 1 : 1,
+          user_id: userId,
+          type: 'TASK_ASSIGNED',
+          message: `새로운 Task 담당자로 지정되었습니다: ${task?.title ?? 'Task'}`,
+          is_read: false,
+          created_at: new Date().toISOString(),
+        });
+      });
     saveDB();
     emitDemoEvent({
       title: 'Task 담당자 재할당',

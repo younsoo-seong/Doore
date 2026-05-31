@@ -72,7 +72,7 @@ const getPeerDraftSentences = (taskTitle = '', taskRequirement = '') => {
 export default function EditTask() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { currentUser, currentCompany } = useAuth();
   const { isOffline } = useNetwork();
   const contentRef = useRef<HTMLTextAreaElement | null>(null);
   
@@ -89,6 +89,9 @@ export default function EditTask() {
   const [deptMembers, setDeptMembers] = useState<any[]>([]);
   const [selectedAssignees, setSelectedAssignees] = useState<number[]>([]);
   const [myDeptRole, setMyDeptRole] = useState<string | null>(null);
+  const [showAssigneeEditor, setShowAssigneeEditor] = useState(false);
+  const [draftAssignees, setDraftAssignees] = useState<number[]>([]);
+  const [isSavingAssignees, setIsSavingAssignees] = useState(false);
 
   // Confirmation & Save indicators
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -142,7 +145,14 @@ export default function EditTask() {
 
         // 2. Fetch department members to populate assignee options
         const members = await api.getDepartmentMembers(document.department_id);
-        setDeptMembers(members);
+        const companyMembers = currentCompany ? await api.getCompanyMembers(currentCompany.id) : [];
+        const ownerIds = new Set(
+          companyMembers
+            .filter((member: any) => member.role === 'OWNER')
+            .map((member: any) => member.id)
+        );
+        const assignableMembers = members.filter((member: any) => !ownerIds.has(member.id));
+        setDeptMembers(assignableMembers);
         const me = members.find((member: any) => member.id === currentUser?.id);
         setMyDeptRole(me?.role ?? null);
 
@@ -156,7 +166,7 @@ export default function EditTask() {
       }
     }
     loadTaskDetails();
-  }, [taskId, navigate, currentUser]);
+  }, [taskId, navigate, currentUser, currentCompany]);
 
 
   useEffect(() => {
@@ -346,6 +356,50 @@ export default function EditTask() {
     }
   };
 
+  const openAssigneeEditor = () => {
+    setDraftAssignees(selectedAssignees);
+    setShowAssigneeEditor(true);
+  };
+
+  const handleToggleDraftAssignee = (userId: number) => {
+    setDraftAssignees((prev) => {
+      if (prev.includes(userId)) {
+        if (prev.length <= 1) {
+          alert('최소 1명 이상의 담당자가 지정되어야 합니다.');
+          return prev;
+        }
+        return prev.filter((id) => id !== userId);
+      }
+
+      if (prev.length >= 5) {
+        alert('담당자는 최대 5명까지만 지정할 수 있습니다.');
+        return prev;
+      }
+      return [...prev, userId];
+    });
+  };
+
+  const handleSaveAssignees = async () => {
+    if (!taskInfo) return;
+    if (draftAssignees.length < 1) {
+      alert('최소 1명 이상의 담당자가 지정되어야 합니다.');
+      return;
+    }
+
+    setIsSavingAssignees(true);
+    try {
+      await api.updateTaskAssignees(taskInfo.id, draftAssignees);
+      setSelectedAssignees(draftAssignees);
+      setTaskInfo((prev: any) => prev ? { ...prev, assignee_count: draftAssignees.length } : prev);
+      setShowAssigneeEditor(false);
+      alert('Task 담당자가 변경되었습니다.');
+    } catch (e: any) {
+      alert(e.message || 'Task 담당자 변경에 실패했습니다.');
+    } finally {
+      setIsSavingAssignees(false);
+    }
+  };
+
   const handleApproveTask = async () => {
     if (!taskInfo || !currentUser || !canReviewCurrentTask) return;
     try {
@@ -409,6 +463,7 @@ export default function EditTask() {
   const canRequestCurrentTaskApproval = isEditable && !canReviewCurrentTask && taskStatus === 'DOING';
   const canApproveCurrentTask = canReviewCurrentTask && taskStatus === 'DONE' && taskInfo.review_status !== 'APPROVED';
   const canRejectCurrentTask = canReviewCurrentTask && taskStatus === 'DONE' && taskInfo.review_status !== 'APPROVED';
+  const canManageCurrentAssignees = canReviewCurrentTask && taskStatus !== 'DONE';
   const isReviewMode = canReviewCurrentTask && isReadOnly;
   const isAssignee = currentUser ? selectedAssignees.includes(currentUser.id) : false;
   const lockReason = (() => {
@@ -642,6 +697,25 @@ export default function EditTask() {
                   );
                 })}
               </div>
+              {canManageCurrentAssignees && (
+                <button
+                  type="button"
+                  onClick={openAssigneeEditor}
+                  style={{
+                    padding: '5px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'white',
+                    color: 'var(--primary)',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  담당자 변경
+                </button>
+              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px 4px 10px', border: '1px solid var(--border-color)', borderRadius: '10px', background: 'var(--bg-app)' }}>
@@ -809,6 +883,85 @@ export default function EditTask() {
         </div>
       </div>
 
+      {showAssigneeEditor && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15, 23, 42, 0.48)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div style={{ width: '460px', maxWidth: '100%', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 18px 45px rgba(15, 23, 42, 0.22)', padding: '24px' }}>
+            <div style={{ marginBottom: '18px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: 'var(--text-primary)' }}>Task 담당자 변경</h3>
+              <p style={{ margin: '6px 0 0', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                부서장은 진행 중인 Task의 담당자를 1명 이상, 최대 5명까지 재배정할 수 있습니다.
+              </p>
+            </div>
+
+            <div style={{ border: '1px solid var(--border-color)', borderRadius: '10px', overflow: 'hidden', maxHeight: '280px', overflowY: 'auto' }}>
+              {deptMembers.map((member: any) => {
+                const checked = draftAssignees.includes(member.id);
+                return (
+                  <label
+                    key={member.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderBottom: '1px solid var(--border-color)',
+                      background: checked ? 'var(--primary-light)' : 'white',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => handleToggleDraftAssignee(member.id)}
+                    />
+                    <div className="avatar" style={{ width: 28, height: 28, fontSize: 11 }}>
+                      {member.name.charAt(0)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--text-primary)' }}>{member.name}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                        {member.email} · {member.role === 'LEADER' || member.role === 'TASK_MANAGER' ? '부서장' : '부서원'}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+              {deptMembers.length === 0 && (
+                <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+                  배정 가능한 부서원이 없습니다.
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', gap: '10px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 700 }}>
+                선택 {draftAssignees.length}명
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAssigneeEditor(false)}
+                  disabled={isSavingAssignees}
+                  style={{ padding: '9px 14px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'white', cursor: isSavingAssignees ? 'not-allowed' : 'pointer', fontWeight: 700 }}
+                >
+                  취소
+                </button>
+                <ApiHint hint={apiHints.assignTaskAssignee}>
+                  <button
+                    type="button"
+                    onClick={handleSaveAssignees}
+                    disabled={isSavingAssignees || draftAssignees.length < 1}
+                    className="btn-primary"
+                    style={{ padding: '9px 14px', minHeight: 0, fontSize: '13px' }}
+                  >
+                    {isSavingAssignees ? '저장 중...' : '담당자 저장'}
+                  </button>
+                </ApiHint>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
